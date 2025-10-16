@@ -10,6 +10,28 @@ A complete recreation of Minecraft in JavaScript, featuring a desktop client bui
 - World creation and management
 - Mod and plugin support
 - Pterodactyl panel compatibility for dedicated servers
+- Configurable graphics settings with quality presets (Low/Medium/High/Ultra)
+- Hardware auto-detection for optimal performance
+- Advanced graphics features: ray tracing simulation, volumetric lighting, dynamic shadows
+
+## Graphics Settings
+
+The game includes comprehensive graphics configuration to ensure optimal performance across all hardware levels:
+
+### Quality Presets
+- **Low**: Basic rendering for low-end devices (30+ FPS on integrated graphics)
+- **Medium**: Balanced settings for mainstream hardware (60+ FPS)
+- **High**: Enhanced visuals with advanced effects (60+ FPS on mid-range GPUs)
+- **Ultra**: Maximum quality with all features enabled (for high-end hardware)
+
+### Advanced Features
+- Ray tracing simulation for realistic lighting
+- Volumetric lighting and fog effects
+- Dynamic shadows and ambient occlusion
+- Configurable render distance and chunk loading
+- Performance monitoring and automatic adjustments
+
+Settings are automatically saved and persist between sessions.
 
 ## Project Structure
 
@@ -48,7 +70,45 @@ A complete recreation of Minecraft in JavaScript, featuring a desktop client bui
 
 ## Modding
 
-Mods can be placed in the `mods/` directory. See `docs/modding.md` for API documentation.
+The game features a comprehensive modding system that allows you to extend gameplay with custom blocks, items, and mechanics.
+
+### Features
+- **Hot Reloading**: Mods reload automatically when files are changed
+- **Event System**: Hook into game events like world generation, block breaking, and player actions
+- **Block/Item Registration**: Add custom blocks and items with full properties
+- **World Manipulation**: Modify terrain generation and world data
+- **Plugin API**: Clean API for creating complex modifications
+
+### Creating Mods
+Mods are JavaScript files placed in the `mods/` directory. See `docs/modding.md` for the complete API documentation and examples.
+
+### Example Mod
+```javascript
+module.exports = {
+  name: 'My First Mod',
+  version: '1.0.0',
+
+  async initialize(api) {
+    // Register a custom block
+    const myBlockId = api.registerBlock('my_block', {
+      hardness: 2.0,
+      tool: 'pickaxe',
+      drops: 'my_item',
+      color: 0xff0000,
+    });
+
+    // Register an item
+    api.registerItem('my_item', {
+      name: 'My Item',
+      maxStack: 64,
+    });
+
+    api.log('My mod loaded!');
+  },
+};
+```
+
+Mods are loaded automatically on server startup and support hot reloading during development.
 
 ## Server Setup
 

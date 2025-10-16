@@ -3,6 +3,7 @@ const { createServer } = require('http');
 const { Server } = require('socket.io');
 const { v4: uuidv4 } = require('uuid');
 const { World } = require('../shared/world');
+const { ModManager } = require('../shared/mod-manager');
 const fs = require('fs');
 const path = require('path');
 
@@ -36,7 +37,23 @@ log(`Game Mode: ${GAME_MODE}`);
 if (WORLD_SEED) log(`World Seed: ${WORLD_SEED}`);
 
 const players = {};
-const world = new World();
+const modManager = new ModManager();
+const world = new World(WORLD_SEED, (chunk) => {
+  // Emit world generation event for mods
+  modManager.emitEvent('world-generation', chunk);
+});
+
+// Initialize mod system
+(async () => {
+  try {
+    await modManager.initialize();
+    // Pass world reference to mods
+    modManager.world = world;
+    log(`Mod system initialized with ${modManager.getLoadedMods().length} mods`);
+  } catch (error) {
+    log(`Failed to initialize mod system: ${error.message}`);
+  }
+})();
 
 app.get('/', (req, res) => {
   res.json({
@@ -81,6 +98,9 @@ io.on('connection', (socket) => {
     if (players[playerId]) {
       players[playerId].position = data.position;
       socket.broadcast.emit('playerMoved', { id: playerId, position: data.position });
+
+      // Emit mod event
+      modManager.emitEvent('player-move', players[playerId], data.position);
     }
   });
 
@@ -88,6 +108,22 @@ io.on('connection', (socket) => {
     // Update world
     world.setBlock(data.x, data.y, data.z, data.type);
     io.emit('blockUpdated', data);
+
+    // Emit mod event
+    modManager.emitEvent('block-place', data.type, { x: data.x, y: data.y, z: data.z }, playerId);
+  });
+
+  socket.on('chatMessage', (data) => {
+    // Broadcast chat message to all players
+    const playerName = players[playerId] ? `Player_${playerId.slice(0, 4)}` : 'Unknown';
+    io.emit('chatMessage', {
+      player: playerName,
+      message: data.message,
+      playerId: playerId
+    });
+
+    // Emit mod event
+    modManager.emitEvent('player-chat', players[playerId], data.message);
   });
 
   socket.on('disconnect', () => {

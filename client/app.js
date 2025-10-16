@@ -3,74 +3,139 @@ const { io } = require('socket.io-client');
 const VoxelEngine = require('./voxel');
 const { World } = require('../shared/world');
 
-console.log('Minecraft Clone Client Starting...');
+class GameClient {
+  constructor() {
+    this.socket = null;
+    this.myPlayer = null;
+    this.otherPlayers = {};
+    this.world = new World();
+    this.voxelEngine = new VoxelEngine();
+    this.voxelEngine.animate();
+    this.isConnected = false;
 
-const voxelEngine = new VoxelEngine();
-voxelEngine.animate();
-
-const world = new World();
-
-const socket = io('http://localhost:3000'); // Connect to server
-
-let myPlayer = null;
-const otherPlayers = {};
-
-socket.on('connect', () => {
-  console.log('Connected to server');
-});
-
-socket.on('connectionRejected', (data) => {
-  console.error('Connection rejected:', data.reason);
-  alert(`Connection rejected: ${data.reason}`);
-});
-
-socket.on('worldData', (data) => {
-  console.log('Received world data');
-  // Load chunks into local world
-  for (const [key, blocks] of Object.entries(data)) {
-    const [x, z] = key.split(',').map(Number);
-    const chunk = world.getChunk(x, z);
-    chunk.blocks = blocks;
+    // Make this available globally for UI
+    window.gameClient = this;
   }
-  // TODO: Render the world
-});
 
-socket.on('playerJoined', (player) => {
-  if (player.id === myPlayer?.id) {
-    // This is us, already handled
-  } else {
-    otherPlayers[player.id] = player;
-    console.log('Player joined:', player);
+  connectToServer(address) {
+    if (this.socket) {
+      this.socket.disconnect();
+    }
+
+    console.log('Connecting to:', address);
+    this.socket = io(`http://${address}`);
+
+    this.socket.on('connect', () => {
+      console.log('Connected to server');
+      this.isConnected = true;
+      if (window.uiManager) {
+        window.uiManager.enterGame('multiplayer', address);
+      }
+    });
+
+    this.socket.on('connectionRejected', (data) => {
+      console.error('Connection rejected:', data.reason);
+      this.isConnected = false;
+      if (window.uiManager) {
+        window.uiManager.showConnectionError(data.reason);
+      }
+    });
+
+    this.socket.on('worldData', (data) => {
+      console.log('Received world data');
+      // Load chunks into local world
+      for (const [key, blocks] of Object.entries(data)) {
+        const [x, z] = key.split(',').map(Number);
+        const chunk = this.world.getChunk(x, z);
+        chunk.blocks = blocks;
+      }
+      // TODO: Render the world
+    });
+
+    this.socket.on('playerJoined', (player) => {
+      if (player.id === this.socket.id) {
+        this.myPlayer = player;
+      } else {
+        this.otherPlayers[player.id] = player;
+        console.log('Player joined:', player);
+      }
+    });
+
+    this.socket.on('playerMoved', (data) => {
+      if (this.otherPlayers[data.id]) {
+        this.otherPlayers[data.id].position = data.position;
+        // TODO: Update player position in scene
+      }
+    });
+
+    this.socket.on('playerLeft', (playerId) => {
+      delete this.otherPlayers[playerId];
+      console.log('Player left:', playerId);
+    });
+
+    this.socket.on('blockUpdated', (data) => {
+      this.world.setBlock(data.x, data.y, data.z, data.type);
+      console.log('Block updated:', data);
+      // TODO: Update rendering
+    });
+
+    this.socket.on('chatMessage', (data) => {
+      if (window.uiManager) {
+        window.uiManager.addChatMessage(`${data.player}: ${data.message}`);
+      }
+    });
+
+    this.socket.on('disconnect', () => {
+      console.log('Disconnected from server');
+      this.isConnected = false;
+      if (window.uiManager) {
+        window.uiManager.disconnectFromServer();
+      }
+    });
   }
-});
 
-socket.on('playerMoved', (data) => {
-  if (otherPlayers[data.id]) {
-    otherPlayers[data.id].position = data.position;
-    // TODO: Update player position in scene
+  enterGame(mode, serverAddress) {
+    console.log('Entering game:', mode, serverAddress);
+    // Game is now active, UI is handled by UIManager
   }
-});
 
-socket.on('playerLeft', (playerId) => {
-  delete otherPlayers[playerId];
-  console.log('Player left:', playerId);
-});
+  disconnect() {
+    if (this.socket) {
+      this.socket.disconnect();
+      this.socket = null;
+    }
+    this.isConnected = false;
+    this.myPlayer = null;
+    this.otherPlayers = {};
+  }
 
-socket.on('blockUpdated', (data) => {
-  world.setBlock(data.x, data.y, data.z, data.type);
-  console.log('Block updated:', data);
-  // TODO: Update rendering
-});
+  sendPlayerMove(position) {
+    if (this.socket && this.isConnected) {
+      this.socket.emit('playerMove', { position });
+    }
+  }
 
-socket.on('disconnect', () => {
-  console.log('Disconnected from server');
-});
+  sendBlockUpdate(x, y, z, type) {
+    if (this.socket && this.isConnected) {
+      this.socket.emit('blockUpdate', { x, y, z, type });
+    }
+  }
 
-// Example: Send player movement (placeholder)
+  sendChatMessage(message) {
+    if (this.socket && this.isConnected) {
+      this.socket.emit('chatMessage', { message });
+    }
+  }
+}
+
+// Initialize game client
+const gameClient = new GameClient();
+
+// Handle player movement simulation (for testing)
 setInterval(() => {
-  if (myPlayer) {
+  if (gameClient.myPlayer && gameClient.isConnected) {
     // Simulate movement
-    myPlayer.position.x += 0.1;
-    socket.emit('playerMove', { position: myPlayer.position });
+    gameClient.myPlayer.position.x += 0.01;
+    gameClient.sendPlayerMove(gameClient.myPlayer.position);
   }
-}, 1000);
+}, 100);

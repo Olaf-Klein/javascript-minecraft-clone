@@ -4,13 +4,219 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>JavaScript Minecraft Clone</title>
-  <style>
-    body { margin: 0; overflow: hidden; }
-    canvas { display: block; }
-  </style>
 </head>
 <body>
+  <!-- Main Menu -->
+  <div id="main-menu" class="menu-screen active">
+    <div class="menu-container">
+      <h1 class="game-title">JavaScript Minecraft</h1>
+      <div class="menu-buttons">
+        <button id="singleplayer-btn" class="menu-button">Singleplayer</button>
+        <button id="multiplayer-btn" class="menu-button">Multiplayer</button>
+        <button id="settings-btn" class="menu-button">Settings</button>
+        <button id="quit-btn" class="menu-button">Quit Game</button>
+      </div>
+      <div class="version-info">Version 1.0.0</div>
+    </div>
+  </div>
+
+  <!-- Multiplayer Menu -->
+  <div id="multiplayer-menu" class="menu-screen">
+    <div class="menu-container">
+      <h2>Multiplayer</h2>
+      <div class="server-list">
+        <div class="server-item" data-ip="localhost" data-port="3000">
+          <div class="server-info">
+            <div class="server-name">Local Server</div>
+            <div class="server-details">localhost:3000 - 0/20 players</div>
+          </div>
+          <button class="join-button">Join</button>
+        </div>
+      </div>
+      <div class="menu-buttons">
+        <button id="direct-connect-btn" class="menu-button">Direct Connect</button>
+        <button id="back-to-main-btn" class="menu-button secondary">Back</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Direct Connect Menu -->
+  <div id="direct-connect-menu" class="menu-screen">
+    <div class="menu-container">
+      <h2>Direct Connect</h2>
+      <div class="input-group">
+        <label for="server-ip">Server Address:</label>
+        <input type="text" id="server-ip" placeholder="localhost:3000" value="localhost:3000">
+      </div>
+      <div class="menu-buttons">
+        <button id="connect-btn" class="menu-button">Connect</button>
+        <button id="back-to-multiplayer-btn" class="menu-button secondary">Back</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings Menu -->
+  <div id="settings-menu" class="menu-screen">
+    <div class="menu-container">
+      <h2>Settings</h2>
+      <div class="settings-tabs">
+        <button class="tab-button active" data-tab="graphics">Graphics</button>
+        <button class="tab-button" data-tab="performance">Performance</button>
+        <button class="tab-button" data-tab="controls">Controls</button>
+        <button class="tab-button" data-tab="audio">Audio</button>
+        <button class="tab-button" data-tab="gameplay">Gameplay</button>
+      </div>
+
+      <div class="settings-content">
+        <!-- Graphics Tab -->
+        <div id="graphics-tab" class="settings-tab active">
+          <div class="setting-group">
+            <h3>Quality Preset</h3>
+            <select id="quality-preset">
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+              <option value="ultra">Ultra</option>
+            </select>
+          </div>
+
+          <div class="setting-group">
+            <h3>Render Distance</h3>
+            <input type="range" id="render-distance" min="4" max="32" step="2">
+            <span id="render-distance-value">8</span>
+          </div>
+
+          <div class="setting-group">
+            <h3>Field of View</h3>
+            <input type="range" id="fov" min="60" max="120" step="5">
+            <span id="fov-value">75</span>
+          </div>
+
+          <div class="setting-group">
+            <label><input type="checkbox" id="vsync"> VSync</label>
+          </div>
+
+          <div class="setting-group">
+            <label><input type="checkbox" id="anti-aliasing"> Anti-Aliasing</label>
+          </div>
+
+          <div class="setting-group">
+            <label><input type="checkbox" id="shadows"> Shadows</label>
+          </div>
+
+          <div class="setting-group">
+            <label><input type="checkbox" id="ray-tracing"> Ray Tracing</label>
+            <small>(Requires Ultra quality)</small>
+          </div>
+
+          <div class="setting-group">
+            <label><input type="checkbox" id="volumetrics"> Volumetrics</label>
+            <small>(Requires High+ quality)</small>
+          </div>
+        </div>
+
+        <!-- Performance Tab -->
+        <div id="performance-tab" class="settings-tab">
+          <div class="setting-group">
+            <h3>Max FPS</h3>
+            <input type="range" id="max-fps" min="30" max="300" step="10">
+            <span id="max-fps-value">60</span>
+          </div>
+
+          <div class="setting-group">
+            <h3>Particle Limit</h3>
+            <input type="range" id="particle-limit" min="100" max="10000" step="100">
+            <span id="particle-limit-value">1000</span>
+          </div>
+        </div>
+
+        <!-- Controls Tab -->
+        <div id="controls-tab" class="settings-tab">
+          <div class="setting-group">
+            <h3>Mouse Sensitivity</h3>
+            <input type="range" id="mouse-sensitivity" min="0.1" max="3.0" step="0.1">
+            <span id="mouse-sensitivity-value">1.0</span>
+          </div>
+
+          <div class="setting-group">
+            <label><input type="checkbox" id="invert-mouse"> Invert Mouse</label>
+          </div>
+        </div>
+
+        <!-- Audio Tab -->
+        <div id="audio-tab" class="settings-tab">
+          <div class="setting-group">
+            <h3>Master Volume</h3>
+            <input type="range" id="master-volume" min="0" max="1" step="0.1">
+            <span id="master-volume-value">1.0</span>
+          </div>
+
+          <div class="setting-group">
+            <h3>Music Volume</h3>
+            <input type="range" id="music-volume" min="0" max="1" step="0.1">
+            <span id="music-volume-value">0.7</span>
+          </div>
+
+          <div class="setting-group">
+            <h3>Sound Volume</h3>
+            <input type="range" id="sound-volume" min="0" max="1" step="0.1">
+            <span id="sound-volume-value">1.0</span>
+          </div>
+        </div>
+
+        <!-- Gameplay Tab -->
+        <div id="gameplay-tab" class="settings-tab">
+          <div class="setting-group">
+            <h3>Difficulty</h3>
+            <select id="difficulty">
+              <option value="peaceful">Peaceful</option>
+              <option value="easy">Easy</option>
+              <option value="normal">Normal</option>
+              <option value="hard">Hard</option>
+            </select>
+          </div>
+
+          <div class="setting-group">
+            <label><input type="checkbox" id="show-coordinates"> Show Coordinates</label>
+          </div>
+
+          <div class="setting-group">
+            <label><input type="checkbox" id="auto-save"> Auto Save</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-buttons">
+        <button id="apply-settings-btn" class="menu-button">Apply Settings</button>
+        <button id="reset-settings-btn" class="menu-button secondary">Reset to Defaults</button>
+        <button id="back-from-settings-btn" class="menu-button secondary">Back</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Game UI -->
+  <div id="game-ui" class="game-screen">
+    <div id="crosshair">+</div>
+    <div id="debug-info">
+      <div id="position-display">Position: 0, 10, 0</div>
+      <div id="fps-display">FPS: 60</div>
+    </div>
+    <div id="chat-container">
+      <div id="chat-messages"></div>
+      <input type="text" id="chat-input" placeholder="Type a message...">
+    </div>
+  </div>
+
+  <!-- Loading Screen -->
+  <div id="loading-screen" class="loading-screen">
+    <div class="loading-content">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">Connecting to server...</div>
+    </div>
+  </div>
+
   <div id="app"></div>
   <script src="bundle.js"></script>
+  <script src="ui.js"></script>
 </body>
 </html>
