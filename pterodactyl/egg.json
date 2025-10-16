@@ -1,0 +1,103 @@
+{
+  "_comment": "Pterodactyl Egg Configuration for JavaScript Minecraft Clone",
+  "meta": {
+    "version": "PTDL_v2",
+    "update_url": null
+  },
+  "exported_at": "2024-01-01T00:00:00+00:00",
+  "name": "JavaScript Minecraft Clone",
+  "author": "admin@example.com",
+  "description": "A JavaScript-based Minecraft clone with multiplayer support",
+  "features": null,
+  "docker_images": {
+    "node_18": "ghcr.io/pterodactyl/yolks:nodejs_18",
+    "node_20": "ghcr.io/pterodactyl/yolks:nodejs_20"
+  },
+  "file_denylist": [],
+  "startup": "npm start",
+  "config": {
+    "files": "{\n    \"server/config.json\": {\n        \"parser\": \"json\",\n        \"find\": {\n            \"port\": \"{{server.build.default.port}}\",\n            \"maxPlayers\": \"{{server.build.env.MAX_PLAYERS}}\",\n            \"worldName\": \"{{server.build.env.WORLD_NAME}}\",\n            \"seed\": \"{{server.build.env.WORLD_SEED}}\"\n        }\n    }\n}",
+    "startup": "{\n    \"done\": \"Server is ready!\"\n}",
+    "logs": "{}",
+    "stop": "^C"
+  },
+  "scripts": {
+    "installation": {
+      "script": "#!/bin/bash\n# JavaScript Minecraft Clone Installation Script\n\napt update\napt install -y git curl jq\n\nmkdir -p /mnt/server\ncd /mnt/server\n\nif [ -z \"${GITHUB_REPO}\" ]; then\n    GITHUB_REPO=\"https://github.com/Olaf-Klein/javascript-minecraft-clone\"\nfi\n\nif [ -z \"${BRANCH}\" ]; then\n    BRANCH=\"main\"\nfi\n\necho \"Cloning repository from ${GITHUB_REPO}...\"\ngit clone --single-branch --branch ${BRANCH} ${GITHUB_REPO} .\n\necho \"Installing dependencies...\"\nnpm install\n\necho \"Installation complete!\"\n",
+      "container": "node:18-bullseye",
+      "entrypoint": "bash"
+    }
+  },
+  "variables": [
+    {
+      "name": "Server Port",
+      "description": "The port that the server will listen on",
+      "env_variable": "SERVER_PORT",
+      "default_value": "3000",
+      "user_viewable": true,
+      "user_editable": false,
+      "rules": "required|numeric|between:1024,65535",
+      "field_type": "text"
+    },
+    {
+      "name": "Max Players",
+      "description": "Maximum number of players allowed on the server",
+      "env_variable": "MAX_PLAYERS",
+      "default_value": "20",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|numeric|between:1,100",
+      "field_type": "text"
+    },
+    {
+      "name": "World Name",
+      "description": "Name of the world save",
+      "env_variable": "WORLD_NAME",
+      "default_value": "world",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|max:32",
+      "field_type": "text"
+    },
+    {
+      "name": "World Seed",
+      "description": "Seed for world generation (leave empty for random)",
+      "env_variable": "WORLD_SEED",
+      "default_value": "12345",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|numeric",
+      "field_type": "text"
+    },
+    {
+      "name": "Render Distance",
+      "description": "Server-side render distance in chunks",
+      "env_variable": "RENDER_DISTANCE",
+      "default_value": "8",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|numeric|between:2,16",
+      "field_type": "text"
+    },
+    {
+      "name": "GitHub Repository",
+      "description": "Repository to clone from",
+      "env_variable": "GITHUB_REPO",
+      "default_value": "https://github.com/Olaf-Klein/javascript-minecraft-clone",
+      "user_viewable": false,
+      "user_editable": false,
+      "rules": "nullable|string",
+      "field_type": "text"
+    },
+    {
+      "name": "Branch",
+      "description": "Git branch to use",
+      "env_variable": "BRANCH",
+      "default_value": "main",
+      "user_viewable": false,
+      "user_editable": false,
+      "rules": "nullable|string",
+      "field_type": "text"
+    }
+  ]
+}

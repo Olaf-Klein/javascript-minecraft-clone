@@ -1,2 +1,33 @@
 # Dependency directories
 node_modules/
+
+# Build outputs
+dist/
+
+# World data
+worlds/
+
+# Plugin configs (keep plugin source)
+server/plugins/plugins-data/*/config.json
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment
+.env
+.env.local
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Database
+*.db
+*.db-journal

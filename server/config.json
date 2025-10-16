@@ -1,0 +1,19 @@
+{
+  "port": 3000,
+  "maxPlayers": 20,
+  "renderDistance": 8,
+  "worldName": "world",
+  "seed": 12345,
+  "gameMode": "creative",
+  "difficulty": "peaceful",
+  "pluginsEnabled": true,
+  "pluginsDir": "./server/plugins/plugins-data",
+  "serverName": "JavaScript Minecraft Server",
+  "motd": "Welcome to JavaScript Minecraft!",
+  "lanDiscovery": true,
+  "whitelist": false,
+  "whitelistUsers": [],
+  "operators": [],
+  "autoSave": true,
+  "autoSaveInterval": 300000
+}
