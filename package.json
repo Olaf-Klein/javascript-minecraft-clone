@@ -1,0 +1,28 @@
+{
+  "name": "javascript-minecraft-clone",
+  "version": "1.0.0",
+  "description": "A JavaScript Minecraft clone with desktop client and dedicated server support",
+  "main": "index.js",
+  "scripts": {
+    "start": "npm run start:client",
+    "start:client": "cd client && npm start",
+    "start:server": "cd server && npm start",
+    "build": "npm run build:client && npm run build:server",
+    "build:client": "cd client && npm run build",
+    "build:server": "cd server && npm run build",
+    "test": "npm run test:client && npm run test:server",
+    "test:client": "cd client && npm test",
+    "test:server": "cd server && npm test"
+  },
+  "keywords": ["minecraft", "clone", "javascript", "electron", "multiplayer"],
+  "author": "Olaf Klein",
+  "license": "MIT",
+  "devDependencies": {
+    "lerna": "^8.0.0"
+  },
+  "workspaces": [
+    "client",
+    "server",
+    "shared"
+  ]
+}
