@@ -54,6 +54,15 @@ Mods can be placed in the `mods/` directory. See `docs/modding.md` for API docum
 
 For dedicated servers, use the server component. It's compatible with Pterodactyl panel.
 
+### Pterodactyl Configuration
+- **Egg Import**: Use `pterodactyl-egg.json` to import the server egg into Pterodactyl
+- **Startup Command**: `npm start` (handled by egg)
+- **Docker Image**: `ghcr.io/pterodactyl/images:node-18` (handled by egg)
+- **Environment Variables**: Configurable via Pterodactyl panel (name, max players, game mode, etc.)
+- **Installation**: Automatic via egg installation script
+
+See `docs/pterodactyl-setup.md` for detailed setup instructions.
+
 ## License
 
 MIT

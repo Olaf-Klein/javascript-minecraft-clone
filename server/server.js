@@ -3,22 +3,60 @@ const { createServer } = require('http');
 const { Server } = require('socket.io');
 const { v4: uuidv4 } = require('uuid');
 const { World } = require('../shared/world');
+const fs = require('fs');
+const path = require('path');
+
+// Create logs directory if it doesn't exist
+const logsDir = path.join(__dirname, 'logs');
+if (!fs.existsSync(logsDir)) {
+  fs.mkdirSync(logsDir);
+}
+
+// Simple logging function
+function log(message) {
+  const timestamp = new Date().toISOString();
+  const logMessage = `[${timestamp}] ${message}\n`;
+  console.log(message);
+  fs.appendFileSync(path.join(logsDir, 'latest.log'), logMessage);
+}
 
 const app = express();
 const server = createServer(app);
 const io = new Server(server);
 
 const PORT = process.env.PORT || 3000;
+const SERVER_NAME = process.env.SERVER_NAME || 'JavaScript Minecraft Server';
+const MAX_PLAYERS = parseInt(process.env.MAX_PLAYERS) || 20;
+const WORLD_SEED = process.env.WORLD_SEED || null;
+const GAME_MODE = process.env.GAME_MODE || 'survival';
 
-app.get('/', (req, res) => {
-  res.send('Minecraft Clone Server');
-});
+log(`Starting ${SERVER_NAME}`);
+log(`Max Players: ${MAX_PLAYERS}`);
+log(`Game Mode: ${GAME_MODE}`);
+if (WORLD_SEED) log(`World Seed: ${WORLD_SEED}`);
 
 const players = {};
 const world = new World();
 
+app.get('/', (req, res) => {
+  res.json({
+    name: SERVER_NAME,
+    version: '1.0.0',
+    players: Object.keys(players).length,
+    maxPlayers: MAX_PLAYERS,
+    gameMode: GAME_MODE
+  });
+});
+
 io.on('connection', (socket) => {
-  console.log('A user connected:', socket.id);
+  // Check player limit
+  if (Object.keys(players).length >= MAX_PLAYERS) {
+    socket.emit('connectionRejected', { reason: 'Server is full' });
+    socket.disconnect();
+    return;
+  }
+
+  log('A user connected:', socket.id);
 
   // Assign player ID
   const playerId = uuidv4();
@@ -53,12 +91,35 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
-    console.log('User disconnected:', socket.id);
+    log('User disconnected:', socket.id);
     delete players[playerId];
     io.emit('playerLeft', playerId);
   });
 });
 
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+server.listen(PORT, '0.0.0.0', () => {
+  log(`Server running on port ${PORT}`);
+});
+
+// Graceful shutdown
+process.on('SIGINT', () => {
+  log('Shutting down server...');
+  io.close(() => {
+    log('Socket.IO closed');
+    server.close(() => {
+      log('Server closed');
+      process.exit(0);
+    });
+  });
+});
+
+process.on('SIGTERM', () => {
+  log('Shutting down server...');
+  io.close(() => {
+    log('Socket.IO closed');
+    server.close(() => {
+      log('Server closed');
+      process.exit(0);
+    });
+  });
 });

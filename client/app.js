@@ -19,6 +19,11 @@ socket.on('connect', () => {
   console.log('Connected to server');
 });
 
+socket.on('connectionRejected', (data) => {
+  console.error('Connection rejected:', data.reason);
+  alert(`Connection rejected: ${data.reason}`);
+});
+
 socket.on('worldData', (data) => {
   console.log('Received world data');
   // Load chunks into local world
@@ -31,8 +36,8 @@ socket.on('worldData', (data) => {
 });
 
 socket.on('playerJoined', (player) => {
-  if (player.id === socket.id) {
-    myPlayer = player;
+  if (player.id === myPlayer?.id) {
+    // This is us, already handled
   } else {
     otherPlayers[player.id] = player;
     console.log('Player joined:', player);
