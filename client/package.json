@@ -2,6 +2,7 @@
   "name": "minecraft-clone-client",
   "version": "1.0.0",
   "description": "Desktop client for JavaScript Minecraft clone",
+  "author": "Olaf Klein",
   "main": "main.js",
   "homepage": "./",
   "scripts": {
@@ -17,11 +18,11 @@
     "dist:linux": "npm run generate-icons && npm run build && electron-builder --linux"
   },
   "dependencies": {
-    "electron": "^28.0.0",
     "three": "^0.158.0",
     "socket.io-client": "^4.7.0"
   },
   "devDependencies": {
+    "electron": "28.3.3",
     "@types/three": "^0.158.0",
     "webpack": "^5.89.0",
     "webpack-cli": "^5.1.4",
@@ -45,8 +46,9 @@
       "!package-lock.json"
     ],
     "win": {
-      "target": "nsis",
-      "icon": "assets/icon.svg"
+      "target": "dir",
+      "icon": "assets/icon-256.png",
+      "sign": false
     },
     "mac": {
       "target": "dmg",
