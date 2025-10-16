@@ -1,6 +1,8 @@
 // Enhanced voxel engine using Three.js with advanced graphics features
 const THREE = require('three');
 const { BLOCK_TYPES, CHUNK_SIZE } = require('../shared/constants');
+const TextureManager = require('./texture-manager');
+const ShaderManager = require('./shader-manager');
 
 class VoxelEngine {
   constructor() {
@@ -17,6 +19,10 @@ class VoxelEngine {
     this.camera.position.set(0, 10, 10);
     this.camera.lookAt(0, 0, 0);
 
+    // Initialize texture and shader managers
+    this.textureManager = new TextureManager();
+    this.shaderManager = new ShaderManager();
+
     // Enhanced lighting setup
     this.setupLighting();
 
@@ -27,7 +33,10 @@ class VoxelEngine {
       rayTracing: false,
       volumetrics: false,
       ssao: false,
-      bloom: false
+      bloom: false,
+      normalMapping: true,
+      pbrMaterials: true,
+      customShaders: true
     };
 
     // Create initial chunk
@@ -65,10 +74,9 @@ class VoxelEngine {
 
   createChunk(x, y, z) {
     const geometry = new THREE.BoxGeometry(1, 1, 1);
-    const material = new THREE.MeshLambertMaterial({
-      color: 0x00ff00,
-      transparent: false
-    });
+
+    // Use texture manager to get material for grass block (as example)
+    const material = this.textureManager.getBlockMaterial(BLOCK_TYPES.GRASS_BLOCK);
 
     const cube = new THREE.Mesh(geometry, material);
     cube.position.set(x * CHUNK_SIZE, y * CHUNK_SIZE, z * CHUNK_SIZE);
@@ -77,6 +85,64 @@ class VoxelEngine {
     this.scene.add(cube);
 
     return cube;
+  }
+
+  // Create a block with proper material based on block type
+  createBlock(blockType, x, y, z) {
+    const geometry = new THREE.BoxGeometry(1, 1, 1);
+    let material;
+
+    // Choose material type based on quality settings and block type
+    if (this.qualitySettings.customShaders) {
+      if (blockType === BLOCK_TYPES.WATER) {
+        material = this.shaderManager.createMaterial('water', {
+          waterTexture: { value: this.textureManager.textures.get('water') },
+          waterColor: { value: new THREE.Color(0x006994) },
+          transparency: { value: 0.8 }
+        });
+      } else if (blockType === BLOCK_TYPES.GLASS) {
+        material = this.shaderManager.createMaterial('glass', {
+          map: { value: this.textureManager.textureAtlas },
+          color: { value: new THREE.Color(0xffffff) },
+          reflectivity: { value: 0.5 }
+        });
+      } else if (this.qualitySettings.pbrMaterials) {
+        material = this.shaderManager.createMaterial('enhanced-pbr', {
+          map: { value: this.textureManager.textureAtlas },
+          roughness: { value: this.textureManager.getBlockRoughness(blockType) },
+          metalness: { value: this.textureManager.getBlockMetalness(blockType) },
+          useNormalMap: { value: this.qualitySettings.normalMapping }
+        });
+      } else {
+        material = this.shaderManager.createMaterial('minecraft', {
+          map: { value: this.textureManager.textureAtlas },
+          roughness: { value: this.textureManager.getBlockRoughness(blockType) },
+          metalness: { value: this.textureManager.getBlockMetalness(blockType) },
+          useNormalMap: { value: this.qualitySettings.normalMapping }
+        });
+      }
+    } else {
+      // Fallback to standard materials
+      material = this.textureManager.getBlockMaterial(blockType);
+    }
+
+    const block = new THREE.Mesh(geometry, material);
+    block.position.set(x, y, z);
+    block.castShadow = this.qualitySettings.shadows;
+    block.receiveShadow = this.qualitySettings.shadows;
+
+    // Set UV offset for texture atlas
+    if (material.map) {
+      const uvInfo = this.textureManager.getFaceUV(blockType, 'top');
+      if (uvInfo) {
+        // For now, use same texture for all faces
+        // In a full implementation, you'd set different UVs for each face
+        material.map.offset.set(uvInfo.u, uvInfo.v);
+        material.map.repeat.set(uvInfo.width, uvInfo.height);
+      }
+    }
+
+    return block;
   }
 
   updateQualitySettings(settings) {
@@ -258,6 +324,10 @@ class VoxelEngine {
       this.godRays.rotation.y += 0.0005;
     }
 
+    // Update shader time uniforms
+    const time = performance.now() * 0.001; // Convert to seconds
+    this.shaderManager.updateTime(time);
+
     this.renderer.render(this.scene, this.camera);
   }
 
@@ -286,6 +356,11 @@ class VoxelEngine {
         }
       }
     });
+
+    // Dispose of texture and shader managers
+    if (this.textureManager) {
+      this.textureManager.dispose();
+    }
 
     this.renderer.dispose();
   }

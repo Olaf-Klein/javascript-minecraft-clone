@@ -10,9 +10,14 @@
     "build": "npm run build:client && npm run build:server",
     "build:client": "cd client && npm run build",
     "build:server": "cd server && npm run build",
+    "dist": "npm run build && cd client && npm run dist",
+    "dist:win": "npm run build && cd client && npm run dist:win",
+    "dist:mac": "npm run build && cd client && npm run dist:mac",
+    "dist:linux": "npm run build && cd client && npm run dist:linux",
     "test": "npm run test:client && npm run test:server",
     "test:client": "cd client && npm test",
-    "test:server": "cd server && npm test"
+    "test:server": "cd server && npm test",
+    "install:all": "npm install && cd client && npm install && cd ../server && npm install && cd ../shared && npm install"
   },
   "keywords": ["minecraft", "clone", "javascript", "electron", "multiplayer"],
   "author": "Olaf Klein",

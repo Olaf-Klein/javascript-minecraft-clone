@@ -25,11 +25,23 @@ The game includes comprehensive graphics configuration to ensure optimal perform
 - **Ultra**: Maximum quality with all features enabled (for high-end hardware)
 
 ### Advanced Features
-- Ray tracing simulation for realistic lighting
-- Volumetric lighting and fog effects
-- Dynamic shadows and ambient occlusion
-- Configurable render distance and chunk loading
-- Performance monitoring and automatic adjustments
+- **Textures**: Procedural Minecraft-style textures for all blocks
+- **Normal Mapping**: Surface detail and depth perception for realistic block surfaces
+- **PBR Materials**: Physically-based rendering with roughness and metalness properties
+- **Custom Shaders**: Built-in shader effects including:
+  - Enhanced lighting with specular highlights
+  - Ambient occlusion for realistic shadowing
+  - Water shaders with refraction and wave animation
+  - Glass shaders with chromatic aberration
+  - Ray tracing simulation for reflective surfaces
+- **Volumetric Lighting**: Atmospheric scattering and god rays effects
+- **Dynamic Shadows**: High-quality shadow mapping with soft shadows
+- **Tone Mapping**: Advanced color grading and exposure control
+
+### Texture System
+- **Procedural Textures**: Automatically generated Minecraft-style textures when real textures aren't available
+- **Texture Atlas**: Efficient rendering with combined texture sheets
+- **Block-Specific Materials**: Each block type has appropriate visual properties (roughness, metalness, transparency)
 
 Settings are automatically saved and persist between sessions.
 
@@ -61,6 +73,39 @@ Settings are automatically saved and persist between sessions.
    ```bash
    npm run start:client
    ```
+
+## Building Executables
+
+To create standalone executable files for easy distribution:
+
+1. Install all dependencies:
+   ```bash
+   npm run install:all
+   ```
+
+2. Check build setup:
+   ```bash
+   cd client && npm run check-setup
+   ```
+
+3. Build for your platform:
+   ```bash
+   # Windows
+   cd client && npm run dist:win
+
+   # macOS
+   cd client && npm run dist:mac
+
+   # Linux
+   cd client && npm run dist:linux
+
+   # All platforms
+   cd client && npm run dist
+   ```
+
+The executables will be created in `client/dist/` and can be distributed to users for easy installation.
+
+See `docs/build-executables.md` for detailed build instructions.
 
 ## Development
 
