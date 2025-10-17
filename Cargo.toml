@@ -1,0 +1,48 @@
+[package]
+name = "minecraft-clone-rust"
+version = "0.1.0"
+edition = "2021"
+authors = ["Olaf Klein"]
+
+[[bin]]
+name = "minecraft-clone"
+path = "src/main.rs"
+
+[dependencies]
+# Window and Graphics
+winit = "0.30"
+wgpu = "22.0"
+pollster = "0.3"
+bytemuck = { version = "1.19", features = ["derive"] }
+
+# Math and Physics
+glam = "0.29"
+noise = "0.9"
+
+# UI
+egui = "0.29"
+egui-wgpu = "0.29"
+egui-winit = "0.29"
+
+# Image loading
+image = "0.25"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Utilities
+anyhow = "1.0"
+thiserror = "1.0"
+log = "0.4"
+env_logger = "0.11"
+rand = "0.8"
+dirs = "5.0"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+
+[profile.dev]
+opt-level = 1
