@@ -40,15 +40,35 @@ pub struct World {
     chunks: HashMap<(i32, i32), Chunk>,
     noise: Perlin,
     seed: u32,
+    world_dir: Option<std::path::PathBuf>,
 }
 
 impl World {
-    pub fn new(seed: Option<u32>) -> Self {
-        let seed = seed.unwrap_or_else(|| rand::random());
+    pub fn new(world_dir: Option<std::path::PathBuf>, seed: Option<u32>) -> Self {
+        // If a world dir is provided, try to read seed from metadata; otherwise use provided seed or random
+        let mut used_seed = seed.unwrap_or_else(|| rand::random());
+        if let Some(ref dir) = world_dir {
+            let mut meta_path = dir.clone();
+            meta_path.push("world_meta.json");
+            if let Ok(contents) = std::fs::read_to_string(&meta_path) {
+                if let Ok(meta) = serde_json::from_str::<serde_json::Value>(&contents) {
+                    if let Some(s) = meta.get("seed").and_then(|v| v.as_u64()) {
+                        used_seed = s as u32;
+                    }
+                }
+            } else {
+                // Save metadata with chosen seed
+                let meta = serde_json::json!({ "seed": used_seed });
+                let _ = std::fs::create_dir_all(dir);
+                let _ = std::fs::write(&meta_path, serde_json::to_string_pretty(&meta).unwrap());
+            }
+        }
+
         Self {
             chunks: HashMap::new(),
-            noise: Perlin::new(seed),
-            seed,
+            noise: Perlin::new(used_seed),
+            seed: used_seed,
+            world_dir,
         }
     }
 
@@ -192,5 +212,55 @@ impl World {
 
     pub fn seed(&self) -> u32 {
         self.seed
+    }
+
+    pub fn save_meta(&self) {
+        if let Some(ref dir) = self.world_dir {
+            let mut meta_path = dir.clone();
+            meta_path.push("world_meta.json");
+            let meta = serde_json::json!({ "seed": self.seed });
+            let _ = std::fs::create_dir_all(dir);
+            let _ = std::fs::write(&meta_path, serde_json::to_string_pretty(&meta).unwrap());
+        }
+    }
+
+    fn split_world_coord(coord: i32) -> (i32, usize) {
+        let size = CHUNK_SIZE as i32;
+        let chunk = coord.div_euclid(size);
+        let local = coord.rem_euclid(size) as usize;
+        (chunk, local)
+    }
+
+    pub fn get_block_at(&mut self, world_x: i32, world_y: i32, world_z: i32) -> BlockType {
+        if world_y < 0 || world_y >= WORLD_HEIGHT as i32 {
+            return BlockType::Air;
+        }
+
+        let (chunk_x, local_x) = Self::split_world_coord(world_x);
+        let (chunk_z, local_z) = Self::split_world_coord(world_z);
+        let chunk = self.get_chunk(chunk_x, chunk_z);
+        chunk.get_block(local_x, world_y as usize, local_z)
+    }
+
+    pub fn set_block_at(
+        &mut self,
+        world_x: i32,
+        world_y: i32,
+        world_z: i32,
+        block: BlockType,
+    ) -> Option<(i32, i32)> {
+        if world_y < 0 || world_y >= WORLD_HEIGHT as i32 {
+            return None;
+        }
+
+        let (chunk_x, local_x) = Self::split_world_coord(world_x);
+        let (chunk_z, local_z) = Self::split_world_coord(world_z);
+        let chunk = self.get_chunk_mut(chunk_x, chunk_z);
+        let current = chunk.get_block(local_x, world_y as usize, local_z);
+        if current == block {
+            return None;
+        }
+        chunk.set_block(local_x, world_y as usize, local_z, block);
+        Some((chunk_x, chunk_z))
     }
 }

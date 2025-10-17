@@ -4,10 +4,12 @@ use glam::Vec3;
 use std::collections::HashMap;
 
 pub struct Renderer {
-    surface: wgpu::Surface<'static>,
-    device: wgpu::Device,
-    queue: wgpu::Queue,
-    config: wgpu::SurfaceConfiguration,
+    pub surface: wgpu::Surface<'static>,
+    pub device: wgpu::Device,
+    pub queue: wgpu::Queue,
+    pub config: wgpu::SurfaceConfiguration,
+    default_vsync_mode: wgpu::PresentMode,
+    non_vsync_mode: Option<wgpu::PresentMode>,
     size: winit::dpi::PhysicalSize<u32>,
     render_pipeline: wgpu::RenderPipeline,
     depth_texture: wgpu::Texture,
@@ -24,7 +26,10 @@ struct ChunkMesh {
 }
 
 impl Renderer {
-    pub async fn new(window: std::sync::Arc<winit::window::Window>) -> anyhow::Result<Self> {
+    pub async fn new(
+        window: std::sync::Arc<winit::window::Window>,
+        vsync_enabled: bool,
+    ) -> anyhow::Result<Self> {
         let size = window.inner_size();
 
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
@@ -63,12 +68,30 @@ impl Renderer {
             .copied()
             .unwrap_or(surface_caps.formats[0]);
 
+        let default_vsync_mode = surface_caps
+            .present_modes
+            .iter()
+            .copied()
+            .find(|mode| matches!(mode, wgpu::PresentMode::AutoVsync | wgpu::PresentMode::Fifo))
+            .unwrap_or(wgpu::PresentMode::Fifo);
+        let non_vsync_mode = surface_caps
+            .present_modes
+            .iter()
+            .copied()
+            .find(|mode| matches!(mode, wgpu::PresentMode::AutoNoVsync | wgpu::PresentMode::Immediate | wgpu::PresentMode::Mailbox));
+
+        let present_mode = if vsync_enabled {
+            default_vsync_mode
+        } else {
+            non_vsync_mode.unwrap_or(default_vsync_mode)
+        };
+
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
             width: size.width,
             height: size.height,
-            present_mode: wgpu::PresentMode::Fifo,
+            present_mode,
             alpha_mode: surface_caps.alpha_modes[0],
             view_formats: vec![],
             desired_maximum_frame_latency: 2,
@@ -144,13 +167,13 @@ impl Renderer {
             layout: Some(&render_pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: "vs_main",
+                entry_point: Some("vs_main"),
                 buffers: &[Vertex::desc()],
                 compilation_options: Default::default(),
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
-                entry_point: "fs_main",
+                entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: config.format,
                     blend: Some(wgpu::BlendState::REPLACE),
@@ -188,6 +211,8 @@ impl Renderer {
             device,
             queue,
             config,
+            default_vsync_mode,
+            non_vsync_mode,
             size,
             render_pipeline,
             depth_texture,
@@ -238,10 +263,9 @@ impl Renderer {
             .write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[uniform]));
     }
 
-    pub fn update_chunks(&mut self, world: &World, camera_pos: Vec3) {
+    pub fn update_chunks(&mut self, world: &World, camera_pos: Vec3, render_distance: i32) {
         let camera_chunk_x = (camera_pos.x / CHUNK_SIZE as f32).floor() as i32;
         let camera_chunk_z = (camera_pos.z / CHUNK_SIZE as f32).floor() as i32;
-        let render_distance = 4;
 
         // Remove chunks that are too far
         self.chunk_meshes.retain(|(x, z), _| {
@@ -263,7 +287,29 @@ impl Renderer {
         }
     }
 
+    pub fn set_vsync(&mut self, enabled: bool) {
+        let target_mode = if enabled {
+            self.default_vsync_mode
+        } else {
+            self.non_vsync_mode.unwrap_or(self.default_vsync_mode)
+        };
+
+        if self.config.present_mode != target_mode {
+            self.config.present_mode = target_mode;
+            self.surface.configure(&self.device, &self.config);
+        }
+    }
+
+    pub fn invalidate_chunk(&mut self, chunk_x: i32, chunk_z: i32) {
+        self.chunk_meshes.remove(&(chunk_x, chunk_z));
+    }
+
     pub fn generate_chunk_mesh(&mut self, chunk: &Chunk) {
+        // Skip if we already have a mesh for this chunk
+        if self.chunk_meshes.contains_key(&(chunk.x, chunk.z)) {
+            return;
+        }
+
         let (vertices, indices) = self.build_chunk_mesh(chunk);
 
         if indices.is_empty() {
@@ -499,6 +545,50 @@ impl Renderer {
         output.present();
 
         Ok(())
+    }
+
+    // Render the 3D scene into an existing command encoder and texture view.
+    pub fn draw_scene(&mut self, encoder: &mut wgpu::CommandEncoder, view: &wgpu::TextureView) {
+        let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("Scene Render Pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color {
+                        r: 0.53,
+                        g: 0.81,
+                        b: 0.92,
+                        a: 1.0,
+                    }),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: &self.depth_view,
+                depth_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(1.0),
+                    store: wgpu::StoreOp::Store,
+                }),
+                stencil_ops: None,
+            }),
+            timestamp_writes: None,
+            occlusion_query_set: None,
+        });
+
+        render_pass.set_pipeline(&self.render_pipeline);
+        render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
+
+        for mesh in self.chunk_meshes.values() {
+            render_pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
+            render_pass.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+            render_pass.draw_indexed(0..mesh.num_indices, 0, 0..1);
+        }
+    }
+
+    /// Accessor for the depth view used by the renderer (read-only).
+    pub fn depth_view(&self) -> &wgpu::TextureView {
+        &self.depth_view
     }
 }
 

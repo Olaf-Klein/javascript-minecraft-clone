@@ -1,13 +1,28 @@
 use serde::{Deserialize, Serialize};
+use std::fmt;
 use std::fs;
 use std::path::PathBuf;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum QualityPreset {
     Low,
     Medium,
     High,
     Ultra,
+    Custom,
+}
+
+impl fmt::Display for QualityPreset {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let label = match self {
+            QualityPreset::Low => "Low",
+            QualityPreset::Medium => "Medium",
+            QualityPreset::High => "High",
+            QualityPreset::Ultra => "Ultra",
+            QualityPreset::Custom => "Custom",
+        };
+        write!(f, "{}", label)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -22,13 +37,50 @@ pub struct GraphicsSettings {
 
 impl Default for GraphicsSettings {
     fn default() -> Self {
-        Self {
+        let mut settings = Self {
             quality_preset: QualityPreset::Medium,
             render_distance: 8,
             vsync: true,
             fov: 75.0,
             shadows: true,
             antialiasing: true,
+        };
+        settings.apply_preset(QualityPreset::Medium);
+        settings
+    }
+}
+
+impl GraphicsSettings {
+    pub fn apply_preset(&mut self, preset: QualityPreset) {
+        self.quality_preset = preset;
+        match preset {
+            QualityPreset::Low => {
+                self.render_distance = 4;
+                self.shadows = false;
+                self.antialiasing = false;
+            }
+            QualityPreset::Medium => {
+                self.render_distance = 8;
+                self.shadows = true;
+                self.antialiasing = false;
+            }
+            QualityPreset::High => {
+                self.render_distance = 12;
+                self.shadows = true;
+                self.antialiasing = true;
+            }
+            QualityPreset::Ultra => {
+                self.render_distance = 16;
+                self.shadows = true;
+                self.antialiasing = true;
+            }
+            QualityPreset::Custom => {}
+        }
+    }
+
+    pub fn mark_custom(&mut self) {
+        if self.quality_preset != QualityPreset::Custom {
+            self.quality_preset = QualityPreset::Custom;
         }
     }
 }
@@ -38,14 +90,18 @@ pub struct GameSettings {
     pub graphics: GraphicsSettings,
     pub mouse_sensitivity: f32,
     pub player_name: String,
+    pub show_fps: bool,
 }
 
 impl Default for GameSettings {
     fn default() -> Self {
         Self {
             graphics: GraphicsSettings::default(),
-            mouse_sensitivity: 0.003,
+            // Slightly higher default sensitivity for more responsive camera
+            mouse_sensitivity: 0.006,
             player_name: String::from("Player"),
+            // Do not show FPS overlay by default
+            show_fps: false,
         }
     }
 }

@@ -26,7 +26,9 @@ impl InputState {
     }
 
     pub fn update_mouse_delta(&mut self, delta: (f64, f64)) {
-        self.mouse_delta = delta;
+        // Accumulate mouse delta per-frame (device events may arrive multiple times)
+        self.mouse_delta.0 += delta.0;
+        self.mouse_delta.1 += delta.1;
     }
 
     pub fn get_mouse_delta(&self) -> (f64, f64) {
