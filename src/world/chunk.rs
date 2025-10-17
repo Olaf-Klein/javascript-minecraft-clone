@@ -1,11 +1,13 @@
 use super::block::BlockType;
 use noise::{NoiseFn, Perlin};
-use std::collections::HashMap;
+use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 
 pub const CHUNK_SIZE: usize = 16;
 pub const WORLD_HEIGHT: usize = 256;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Chunk {
     pub x: i32,
     pub z: i32,
@@ -41,6 +43,7 @@ pub struct World {
     noise: Perlin,
     seed: u32,
     world_dir: Option<std::path::PathBuf>,
+    dirty_chunks: HashSet<(i32, i32)>,
 }
 
 impl World {
@@ -69,12 +72,19 @@ impl World {
             noise: Perlin::new(used_seed),
             seed: used_seed,
             world_dir,
+            dirty_chunks: HashSet::new(),
         }
     }
 
     pub fn get_chunk(&mut self, chunk_x: i32, chunk_z: i32) -> &Chunk {
         if !self.chunks.contains_key(&(chunk_x, chunk_z)) {
-            let chunk = self.generate_chunk(chunk_x, chunk_z);
+            let chunk = self
+                .load_chunk_from_disk(chunk_x, chunk_z)
+                .unwrap_or_else(|| {
+                    let generated = self.generate_chunk(chunk_x, chunk_z);
+                    self.dirty_chunks.insert((chunk_x, chunk_z));
+                    generated
+                });
             self.chunks.insert((chunk_x, chunk_z), chunk);
         }
         self.chunks.get(&(chunk_x, chunk_z)).unwrap()
@@ -82,7 +92,13 @@ impl World {
 
     pub fn get_chunk_mut(&mut self, chunk_x: i32, chunk_z: i32) -> &mut Chunk {
         if !self.chunks.contains_key(&(chunk_x, chunk_z)) {
-            let chunk = self.generate_chunk(chunk_x, chunk_z);
+            let chunk = self
+                .load_chunk_from_disk(chunk_x, chunk_z)
+                .unwrap_or_else(|| {
+                    let generated = self.generate_chunk(chunk_x, chunk_z);
+                    self.dirty_chunks.insert((chunk_x, chunk_z));
+                    generated
+                });
             self.chunks.insert((chunk_x, chunk_z), chunk);
         }
         self.chunks.get_mut(&(chunk_x, chunk_z)).unwrap()
@@ -248,6 +264,14 @@ impl World {
         self.chunks.keys().copied().collect()
     }
 
+    pub fn is_chunk_loaded(&self, chunk_x: i32, chunk_z: i32) -> bool {
+        self.chunks.contains_key(&(chunk_x, chunk_z))
+    }
+
+    pub fn has_dirty_chunks(&self) -> bool {
+        !self.dirty_chunks.is_empty()
+    }
+
     pub fn seed(&self) -> u32 {
         self.seed
     }
@@ -259,6 +283,31 @@ impl World {
             let meta = serde_json::json!({ "seed": self.seed });
             let _ = std::fs::create_dir_all(dir);
             let _ = std::fs::write(&meta_path, serde_json::to_string_pretty(&meta).unwrap());
+        }
+    }
+
+    pub fn save_dirty_chunks(&mut self) {
+        if self.dirty_chunks.is_empty() {
+            return;
+        }
+
+        if self.world_dir.is_none() {
+            self.dirty_chunks.clear();
+            return;
+        }
+
+        let to_save: Vec<(i32, i32)> = self.dirty_chunks.drain().collect();
+        for (chunk_x, chunk_z) in to_save {
+            if let Some(chunk) = self.chunks.get(&(chunk_x, chunk_z)) {
+                if let Err(err) = self.save_chunk_to_disk(chunk) {
+                    log::warn!(
+                        "Failed to save chunk ({}, {}): {}",
+                        chunk_x, chunk_z, err
+                    );
+                    // Keep chunk marked dirty so we can retry later
+                    self.dirty_chunks.insert((chunk_x, chunk_z));
+                }
+            }
         }
     }
 
@@ -299,6 +348,37 @@ impl World {
             return None;
         }
         chunk.set_block(local_x, world_y as usize, local_z, block);
+        self.dirty_chunks.insert((chunk_x, chunk_z));
         Some((chunk_x, chunk_z))
+    }
+
+    fn chunk_directory(&self) -> Option<PathBuf> {
+        let mut dir = self.world_dir.clone()?;
+        dir.push("chunks");
+        Some(dir)
+    }
+
+    fn chunk_path(&self, chunk_x: i32, chunk_z: i32) -> Option<PathBuf> {
+        let mut dir = self.chunk_directory()?;
+        dir.push(format!("chunk_{}_{}.bin", chunk_x, chunk_z));
+        Some(dir)
+    }
+
+    fn load_chunk_from_disk(&self, chunk_x: i32, chunk_z: i32) -> Option<Chunk> {
+        let path = self.chunk_path(chunk_x, chunk_z)?;
+        let data = std::fs::read(path).ok()?;
+        bincode::deserialize(&data).ok()
+    }
+
+    fn save_chunk_to_disk(&self, chunk: &Chunk) -> anyhow::Result<()> {
+        let Some(dir) = self.chunk_directory() else {
+            return Ok(());
+        };
+        std::fs::create_dir_all(&dir)?;
+        let mut path = dir;
+        path.push(format!("chunk_{}_{}.bin", chunk.x, chunk.z));
+        let data = bincode::serialize(chunk)?;
+        std::fs::write(path, data)?;
+        Ok(())
     }
 }

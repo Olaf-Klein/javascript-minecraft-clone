@@ -6,9 +6,16 @@ mod world;
 
 use glam::{IVec3, Vec3};
 use input::InputState;
-use renderer::{Camera, Renderer};
-use settings::GameSettings;
-use std::sync::Arc;
+use renderer::{
+    camera::Vertex,
+    texture::{self, TextureResolver},
+    Camera,
+    Renderer,
+};
+use settings::{GameSettings, TextureQuality};
+use std::collections::HashSet;
+use std::sync::{mpsc::{self, TryRecvError}, Arc};
+use std::thread;
 use std::time::{Duration, Instant};
 use ui::Gui;
 use winit::{
@@ -34,6 +41,23 @@ struct BlockHit {
     place: Option<IVec3>,
 }
 
+struct ChunkMeshRequest {
+    chunk: world::Chunk,
+    resolver: Arc<TextureResolver>,
+}
+
+struct ChunkMeshResponse {
+    coords: (i32, i32),
+    vertices: Vec<Vertex>,
+    indices: Vec<u32>,
+}
+
+struct PendingAtlasUpload {
+    width: u32,
+    height: u32,
+    pixels: Vec<u8>,
+}
+
 const HOTBAR_BLOCKS: &[(BlockType, &str)] = &[
     (BlockType::GrassBlock, "Grass"),
     (BlockType::Dirt, "Dirt"),
@@ -51,6 +75,7 @@ const PLAYER_HEADROOM: f32 = 0.2;
 const COLLISION_EPSILON: f32 = 0.001;
 const CROSSHAIR_GAP: f32 = 5.0;
 const CROSSHAIR_ARM: f32 = 12.0;
+const SAVE_MESSAGE_DURATION: Duration = Duration::from_secs(4);
 
 struct App {
     window: Option<Arc<Window>>,
@@ -71,14 +96,52 @@ struct App {
     settings: GameSettings,
     last_frame: Instant,
     delta_time: Duration,
+    mesh_request_tx: mpsc::Sender<ChunkMeshRequest>,
+    last_save_timestamp: Option<Instant>,
+    save_feedback: Option<(Instant, String)>,
+    texture_resolver: Arc<TextureResolver>,
+    pending_atlas_upload: Option<PendingAtlasUpload>,
+    active_texture_quality: TextureQuality,
+    mesh_response_rx: mpsc::Receiver<ChunkMeshResponse>,
+    pending_chunk_meshes: HashSet<(i32, i32)>,
+    last_auto_save: Instant,
 }
 
 impl App {
     fn new(worlds_dir: std::path::PathBuf) -> Self {
         let settings = GameSettings::load();
+
+        let atlas_build =
+            texture::build_atlas(settings.graphics.texture_quality.tile_size());
+        let initial_resolver = atlas_build.resolver.clone();
+        let pending_atlas_upload = PendingAtlasUpload {
+            width: atlas_build.width,
+            height: atlas_build.height,
+            pixels: atlas_build.pixels,
+        };
         let world = World::new(None, None);
         let mut camera = Camera::new(Vec3::new(8.0, 80.0, 8.0), 1.0);
         camera.fov = settings.graphics.fov;
+
+    let active_texture_quality = settings.graphics.texture_quality;
+
+        let (mesh_request_tx, mesh_request_rx) = mpsc::channel::<ChunkMeshRequest>();
+        let (mesh_response_tx, mesh_response_rx) = mpsc::channel::<ChunkMeshResponse>();
+
+        thread::Builder::new()
+            .name("chunk-mesh-worker".into())
+            .spawn(move || {
+                while let Ok(ChunkMeshRequest { chunk, resolver }) = mesh_request_rx.recv() {
+                    let coords = (chunk.x, chunk.z);
+                    let (vertices, indices) = Renderer::build_chunk_mesh(&chunk, resolver.as_ref());
+                    let _ = mesh_response_tx.send(ChunkMeshResponse {
+                        coords,
+                        vertices,
+                        indices,
+                    });
+                }
+            })
+            .expect("Failed to start chunk mesh worker");
 
         Self {
             window: None,
@@ -96,6 +159,15 @@ impl App {
             settings,
             last_frame: Instant::now(),
             delta_time: Duration::from_millis(16),
+            mesh_request_tx,
+            mesh_response_rx,
+            pending_chunk_meshes: HashSet::new(),
+            last_auto_save: Instant::now(),
+            last_save_timestamp: None,
+            save_feedback: None,
+            texture_resolver: initial_resolver,
+            pending_atlas_upload: Some(pending_atlas_upload),
+            active_texture_quality,
         }
     }
 
@@ -112,6 +184,106 @@ impl App {
         self.input.set_mouse_captured(captured);
         if let Some(window) = &self.window {
             Self::apply_cursor_capture(window.as_ref(), captured);
+        }
+    }
+
+    fn process_mesh_responses(&mut self) {
+        loop {
+            match self.mesh_response_rx.try_recv() {
+                Ok(response) => {
+                    self.pending_chunk_meshes.remove(&response.coords);
+                    if let Some(renderer) = &mut self.renderer {
+                        renderer.upload_chunk_mesh(
+                            response.coords,
+                            response.vertices,
+                            response.indices,
+                        );
+                    }
+                }
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => break,
+            }
+        }
+    }
+
+    fn ensure_chunk_mesh(&mut self, chunk_x: i32, chunk_z: i32) {
+        if self.pending_chunk_meshes.contains(&(chunk_x, chunk_z)) {
+            return;
+        }
+
+        let has_mesh = self
+            .renderer
+            .as_ref()
+            .map(|renderer| renderer.has_chunk_mesh(chunk_x, chunk_z))
+            .unwrap_or(false);
+
+        if has_mesh {
+            return;
+        }
+
+        let chunk = self.world.get_chunk(chunk_x, chunk_z).clone();
+        if self
+            .mesh_request_tx
+            .send(ChunkMeshRequest {
+                chunk,
+                resolver: self.texture_resolver.clone(),
+            })
+            .is_ok()
+        {
+            self.pending_chunk_meshes.insert((chunk_x, chunk_z));
+        }
+    }
+
+    fn invalidate_chunk_mesh(&mut self, chunk_x: i32, chunk_z: i32) {
+        if let Some(renderer) = &mut self.renderer {
+            renderer.invalidate_chunk(chunk_x, chunk_z);
+        }
+        self.pending_chunk_meshes.remove(&(chunk_x, chunk_z));
+        if self.world.is_chunk_loaded(chunk_x, chunk_z) {
+            self.ensure_chunk_mesh(chunk_x, chunk_z);
+        }
+    }
+
+    fn apply_pending_atlas_upload(&mut self) {
+        if self.renderer.is_none() {
+            return;
+        }
+
+        if let Some(pending) = self.pending_atlas_upload.take() {
+            if let Some(renderer) = self.renderer.as_mut() {
+                renderer.set_texture_atlas(&pending.pixels, pending.width, pending.height);
+            }
+        }
+    }
+
+    fn reload_texture_atlas(&mut self, quality: TextureQuality) {
+        let atlas_build = texture::build_atlas(quality.tile_size());
+        self.texture_resolver = atlas_build.resolver.clone();
+        self.pending_atlas_upload = Some(PendingAtlasUpload {
+            width: atlas_build.width,
+            height: atlas_build.height,
+            pixels: atlas_build.pixels,
+        });
+        self.active_texture_quality = quality;
+        self.apply_pending_atlas_upload();
+        if let Some(renderer) = &mut self.renderer {
+            renderer.clear_chunk_meshes();
+        }
+        self.pending_chunk_meshes.clear();
+        self.requeue_loaded_chunks();
+    }
+
+    fn ensure_texture_quality(&mut self) {
+        let desired = self.settings.graphics.texture_quality;
+        if desired != self.active_texture_quality {
+            self.reload_texture_atlas(desired);
+        }
+    }
+
+    fn requeue_loaded_chunks(&mut self) {
+        let loaded = self.world.get_loaded_chunks();
+        for (chunk_x, chunk_z) in loaded {
+            self.invalidate_chunk_mesh(chunk_x, chunk_z);
         }
     }
 
@@ -204,25 +376,23 @@ impl App {
     }
 
     fn invalidate_chunk_and_neighbors(&mut self, chunk_x: i32, chunk_z: i32, world_pos: IVec3) {
-        if let Some(renderer) = &mut self.renderer {
-            renderer.invalidate_chunk(chunk_x, chunk_z);
+        self.invalidate_chunk_mesh(chunk_x, chunk_z);
 
-            let size = CHUNK_SIZE as i32;
-            let local_x = world_pos.x.rem_euclid(size) as usize;
-            let local_z = world_pos.z.rem_euclid(size) as usize;
+        let size = CHUNK_SIZE as i32;
+        let local_x = world_pos.x.rem_euclid(size) as usize;
+        let local_z = world_pos.z.rem_euclid(size) as usize;
 
-            if local_x == 0 {
-                renderer.invalidate_chunk(chunk_x - 1, chunk_z);
-            }
-            if local_x == CHUNK_SIZE - 1 {
-                renderer.invalidate_chunk(chunk_x + 1, chunk_z);
-            }
-            if local_z == 0 {
-                renderer.invalidate_chunk(chunk_x, chunk_z - 1);
-            }
-            if local_z == CHUNK_SIZE - 1 {
-                renderer.invalidate_chunk(chunk_x, chunk_z + 1);
-            }
+        if local_x == 0 {
+            self.invalidate_chunk_mesh(chunk_x - 1, chunk_z);
+        }
+        if local_x == CHUNK_SIZE - 1 {
+            self.invalidate_chunk_mesh(chunk_x + 1, chunk_z);
+        }
+        if local_z == 0 {
+            self.invalidate_chunk_mesh(chunk_x, chunk_z - 1);
+        }
+        if local_z == CHUNK_SIZE - 1 {
+            self.invalidate_chunk_mesh(chunk_x, chunk_z + 1);
         }
     }
 
@@ -551,6 +721,10 @@ impl App {
         self.delta_time = now - self.last_frame;
         self.last_frame = now;
 
+        self.ensure_texture_quality();
+        self.apply_pending_atlas_upload();
+        self.process_mesh_responses();
+
         if self.screen != AppScreen::Playing {
             // Ensure mouse deltas don't accumulate while in menus
             self.input.reset_mouse_delta();
@@ -607,12 +781,18 @@ impl App {
         let render_distance = self.settings.graphics.render_distance as i32;
 
         for x in (player_chunk_x - render_distance)..=(player_chunk_x + render_distance) {
-            for z in (player_chunk_x - render_distance)..=(player_chunk_x + render_distance) {
-                let chunk = self.world.get_chunk(x, z);
-                if let Some(renderer) = &mut self.renderer {
-                    renderer.generate_chunk_mesh(chunk);
-                }
+            for z in (player_chunk_z - render_distance)..=(player_chunk_z + render_distance) {
+                self.ensure_chunk_mesh(x, z);
             }
+        }
+
+        let autosave_secs = self.settings.autosave_interval_secs.max(1) as u64;
+        if self.last_auto_save.elapsed() >= Duration::from_secs(autosave_secs) {
+            if self.world.has_dirty_chunks() {
+                self.world.save_dirty_chunks();
+                self.world.save_meta();
+            }
+            self.last_auto_save = Instant::now();
         }
 
         // Update renderer
@@ -649,6 +829,7 @@ impl ApplicationHandler for App {
             self.gui = Some(gui);
             self.window = Some(window);
             self.set_cursor_capture(false);
+            self.apply_pending_atlas_upload();
         }
     }
 
@@ -673,6 +854,7 @@ impl ApplicationHandler for App {
             WindowEvent::CloseRequested => {
                 // Persist settings and world metadata before exiting
                 let _ = self.settings.save();
+                self.world.save_dirty_chunks();
                 self.world.save_meta();
                 event_loop.exit();
             }
@@ -859,6 +1041,8 @@ impl ApplicationHandler for App {
                                                 if ui.button("Play").clicked() {
                                                     // Load the selected world and start playing
                                                     let p = path.clone();
+                                                    self.world.save_dirty_chunks();
+                                                    self.world.save_meta();
                                                     self.world = World::new(Some(p.clone()), None);
                                                     self.screen = AppScreen::Playing;
                                                     self.input.set_mouse_captured(true);
@@ -953,6 +1137,7 @@ impl ApplicationHandler for App {
                                     }
                                     if ui.button("Save & Quit").clicked() {
                                         // Save world metadata and go back to main menu
+                                        self.world.save_dirty_chunks();
                                         self.world.save_meta();
                                         let _ = self.settings.save();
                                         self.screen = AppScreen::MainMenu;
@@ -970,6 +1155,8 @@ impl ApplicationHandler for App {
 
                         // If UI requested quit, exit the event loop after painting
                         if request_quit {
+                            self.world.save_dirty_chunks();
+                            self.world.save_meta();
                             event_loop.exit();
                             return;
                         }

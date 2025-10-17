@@ -1,4 +1,4 @@
-use crate::settings::{GameSettings, QualityPreset};
+use crate::settings::{GameSettings, QualityPreset, TextureQuality};
 use egui::{self, FontDefinitions};
 use egui_winit::State;
 use winit::window::Window;
@@ -102,7 +102,7 @@ impl Gui {
                 }
 
                 let render_distance_response = ui.add(
-                    egui::Slider::new(&mut settings.graphics.render_distance, 2..=32)
+                    egui::Slider::new(&mut settings.graphics.render_distance, 2..=64)
                         .text("Render Distance (chunks)"),
                 );
                 if render_distance_response.changed() {
@@ -132,11 +132,77 @@ impl Gui {
                     settings.graphics.mark_custom();
                 }
 
+                let mut selected_texture_quality = settings.graphics.texture_quality;
+                egui::ComboBox::from_label("Texture Resolution")
+                    .selected_text(selected_texture_quality.to_string())
+                    .show_ui(ui, |ui| {
+                        for quality in [
+                            TextureQuality::VeryLow,
+                            TextureQuality::Low,
+                            TextureQuality::Medium,
+                            TextureQuality::High,
+                            TextureQuality::VeryHigh,
+                            TextureQuality::Ultra,
+                        ] {
+                            ui.selectable_value(
+                                &mut selected_texture_quality,
+                                quality,
+                                quality.to_string(),
+                            );
+                        }
+                    });
+                if selected_texture_quality != settings.graphics.texture_quality {
+                    settings.graphics.texture_quality = selected_texture_quality;
+                    settings.graphics.mark_custom();
+                }
+
                 ui.add_space(8.0);
                 ui.heading("Gameplay");
                 ui.add(
                     egui::Slider::new(&mut settings.mouse_sensitivity, 0.001..=0.05)
                         .text("Mouse Sensitivity"),
+                );
+                ui.add(
+                    egui::Slider::new(&mut settings.autosave_interval_secs, 5..=300)
+                        .text("Autosave Interval (seconds)"),
+                );
+                ui.add(
+                    egui::Slider::new(&mut settings.fps_cap_playing, 0..=240)
+                        .integer()
+                        .text("FPS Cap (Playing)")
+                        .custom_formatter(|value, _| {
+                            if value < 0.5 {
+                                "Unlimited".to_string()
+                            } else {
+                                format!("{:.0} FPS", value)
+                            }
+                        })
+                        .custom_parser(|text| {
+                            if text.trim().eq_ignore_ascii_case("unlimited") {
+                                Some(0.0)
+                            } else {
+                                text.parse::<f64>().ok().map(|v| v.clamp(0.0, 240.0))
+                            }
+                        }),
+                );
+                ui.add(
+                    egui::Slider::new(&mut settings.fps_cap_menu, 0..=240)
+                        .integer()
+                        .text("FPS Cap (Menus)")
+                        .custom_formatter(|value, _| {
+                            if value < 0.5 {
+                                "Unlimited".to_string()
+                            } else {
+                                format!("{:.0} FPS", value)
+                            }
+                        })
+                        .custom_parser(|text| {
+                            if text.trim().eq_ignore_ascii_case("unlimited") {
+                                Some(0.0)
+                            } else {
+                                text.parse::<f64>().ok().map(|v| v.clamp(0.0, 240.0))
+                            }
+                        }),
                 );
                 if ui
                     .checkbox(&mut settings.show_fps, "Show FPS Overlay")

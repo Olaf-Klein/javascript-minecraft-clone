@@ -25,6 +25,43 @@ impl fmt::Display for QualityPreset {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum TextureQuality {
+    VeryLow,
+    Low,
+    Medium,
+    High,
+    VeryHigh,
+    Ultra,
+}
+
+impl TextureQuality {
+    pub fn tile_size(self) -> u32 {
+        match self {
+            TextureQuality::VeryLow => 16,
+            TextureQuality::Low => 32,
+            TextureQuality::Medium => 64,
+            TextureQuality::High => 128,
+            TextureQuality::VeryHigh => 256,
+            TextureQuality::Ultra => 512,
+        }
+    }
+}
+
+impl fmt::Display for TextureQuality {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let label = match self {
+            TextureQuality::VeryLow => "Very Low (16x)",
+            TextureQuality::Low => "Low (32x)",
+            TextureQuality::Medium => "Medium (64x)",
+            TextureQuality::High => "High (128x)",
+            TextureQuality::VeryHigh => "Very High (256x)",
+            TextureQuality::Ultra => "Ultra (512x)",
+        };
+        write!(f, "{}", label)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GraphicsSettings {
     pub quality_preset: QualityPreset,
@@ -33,6 +70,7 @@ pub struct GraphicsSettings {
     pub fov: f32,
     pub shadows: bool,
     pub antialiasing: bool,
+    pub texture_quality: TextureQuality,
 }
 
 impl Default for GraphicsSettings {
@@ -44,6 +82,7 @@ impl Default for GraphicsSettings {
             fov: 75.0,
             shadows: true,
             antialiasing: true,
+            texture_quality: TextureQuality::Medium,
         };
         settings.apply_preset(QualityPreset::Medium);
         settings
@@ -58,21 +97,25 @@ impl GraphicsSettings {
                 self.render_distance = 4;
                 self.shadows = false;
                 self.antialiasing = false;
+                self.texture_quality = TextureQuality::Low;
             }
             QualityPreset::Medium => {
                 self.render_distance = 8;
                 self.shadows = true;
                 self.antialiasing = false;
+                self.texture_quality = TextureQuality::Medium;
             }
             QualityPreset::High => {
                 self.render_distance = 12;
                 self.shadows = true;
                 self.antialiasing = true;
+                self.texture_quality = TextureQuality::High;
             }
             QualityPreset::Ultra => {
                 self.render_distance = 16;
                 self.shadows = true;
                 self.antialiasing = true;
+                self.texture_quality = TextureQuality::Ultra;
             }
             QualityPreset::Custom => {}
         }
@@ -86,11 +129,16 @@ impl GraphicsSettings {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct GameSettings {
     pub graphics: GraphicsSettings,
     pub mouse_sensitivity: f32,
     pub player_name: String,
     pub show_fps: bool,
+    #[serde(default = "GameSettings::default_autosave_interval_secs")]
+    pub autosave_interval_secs: u32,
+    pub fps_cap_playing: u32,
+    pub fps_cap_menu: u32,
 }
 
 impl Default for GameSettings {
@@ -102,6 +150,9 @@ impl Default for GameSettings {
             player_name: String::from("Player"),
             // Do not show FPS overlay by default
             show_fps: false,
+            autosave_interval_secs: Self::default_autosave_interval_secs(),
+            fps_cap_playing: 0,
+            fps_cap_menu: 60,
         }
     }
 }
@@ -131,6 +182,10 @@ impl GameSettings {
         path.push("minecraft-clone-rust");
         path.push("settings.json");
         path
+    }
+
+    fn default_autosave_interval_secs() -> u32 {
+        10
     }
 }
 

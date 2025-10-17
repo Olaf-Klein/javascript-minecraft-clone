@@ -1,7 +1,9 @@
 use super::camera::{Camera, CameraUniform, Vertex};
-use crate::world::{Chunk, World, CHUNK_SIZE, WORLD_HEIGHT};
+use super::texture::{texture_key_for, AtlasUV, BlockFace, TextureResolver};
+use crate::world::{BlockType, Chunk, World, CHUNK_SIZE, WORLD_HEIGHT};
 use glam::Vec3;
 use std::collections::HashMap;
+use wgpu::util::DeviceExt;
 
 pub struct Renderer {
     pub surface: wgpu::Surface<'static>,
@@ -16,6 +18,11 @@ pub struct Renderer {
     depth_view: wgpu::TextureView,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
+    texture_bind_group_layout: wgpu::BindGroupLayout,
+    texture_bind_group: Option<wgpu::BindGroup>,
+    atlas_texture: Option<wgpu::Texture>,
+    atlas_texture_view: Option<wgpu::TextureView>,
+    atlas_sampler: wgpu::Sampler,
     chunk_meshes: HashMap<(i32, i32), ChunkMesh>,
 }
 
@@ -120,7 +127,6 @@ impl Renderer {
         let depth_view = depth_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
         // Create camera buffer
-        let camera_uniform = CameraUniform::new();
         let camera_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Camera Buffer"),
             size: std::mem::size_of::<CameraUniform>() as u64,
@@ -152,6 +158,44 @@ impl Renderer {
             }],
         });
 
+        let texture_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Texture Bind Group Layout"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+            });
+
+        let atlas_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("Atlas Sampler"),
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::FilterMode::Linear,
+            lod_min_clamp: 0.0,
+            lod_max_clamp: 4.0,
+            compare: None,
+            anisotropy_clamp: 8,
+            border_color: None,
+        });
+
         // Load shader
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Shader"),
@@ -161,7 +205,7 @@ impl Renderer {
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[&camera_bind_group_layout],
+                bind_group_layouts: &[&camera_bind_group_layout, &texture_bind_group_layout],
                 push_constant_ranges: &[],
             });
 
@@ -179,7 +223,7 @@ impl Renderer {
                 entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: config.format,
-                    blend: Some(wgpu::BlendState::REPLACE),
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
                 compilation_options: Default::default(),
@@ -222,6 +266,11 @@ impl Renderer {
             depth_view,
             camera_buffer,
             camera_bind_group,
+            texture_bind_group_layout,
+            texture_bind_group: None,
+            atlas_texture: None,
+            atlas_texture_view: None,
+            atlas_sampler,
             chunk_meshes: HashMap::new(),
         })
     }
@@ -266,6 +315,67 @@ impl Renderer {
             .write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[uniform]));
     }
 
+    pub fn set_texture_atlas(&mut self, pixels: &[u8], width: u32, height: u32) {
+        let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Chunk Texture Atlas"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+
+        self.queue.write_texture(
+            wgpu::ImageCopyTexture {
+                texture: &texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            pixels,
+            wgpu::ImageDataLayout {
+                offset: 0,
+                bytes_per_row: Some(4 * width),
+                rows_per_image: Some(height),
+            },
+            wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+        );
+
+        let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Texture Bind Group"),
+            layout: &self.texture_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&texture_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&self.atlas_sampler),
+                },
+            ],
+        });
+
+        self.atlas_texture = Some(texture);
+        self.atlas_texture_view = Some(texture_view);
+        self.texture_bind_group = Some(bind_group);
+    }
+
+    pub fn clear_chunk_meshes(&mut self) {
+        self.chunk_meshes.clear();
+    }
+
     pub fn update_chunks(&mut self, world: &World, camera_pos: Vec3, render_distance: i32) {
         let camera_chunk_x = (camera_pos.x / CHUNK_SIZE as f32).floor() as i32;
         let camera_chunk_z = (camera_pos.z / CHUNK_SIZE as f32).floor() as i32;
@@ -307,15 +417,18 @@ impl Renderer {
         self.chunk_meshes.remove(&(chunk_x, chunk_z));
     }
 
-    pub fn generate_chunk_mesh(&mut self, chunk: &Chunk) {
-        // Skip if we already have a mesh for this chunk
-        if self.chunk_meshes.contains_key(&(chunk.x, chunk.z)) {
-            return;
-        }
+    pub fn has_chunk_mesh(&self, chunk_x: i32, chunk_z: i32) -> bool {
+        self.chunk_meshes.contains_key(&(chunk_x, chunk_z))
+    }
 
-        let (vertices, indices) = self.build_chunk_mesh(chunk);
-
-        if indices.is_empty() {
+    pub fn upload_chunk_mesh(
+        &mut self,
+        coords: (i32, i32),
+        vertices: Vec<Vertex>,
+        indices: Vec<u32>,
+    ) {
+        if vertices.is_empty() || indices.is_empty() {
+            self.chunk_meshes.remove(&coords);
             return;
         }
 
@@ -336,7 +449,7 @@ impl Renderer {
             });
 
         self.chunk_meshes.insert(
-            (chunk.x, chunk.z),
+            coords,
             ChunkMesh {
                 vertex_buffer,
                 index_buffer,
@@ -345,7 +458,10 @@ impl Renderer {
         );
     }
 
-    fn build_chunk_mesh(&self, chunk: &Chunk) -> (Vec<Vertex>, Vec<u32>) {
+    pub fn build_chunk_mesh(
+        chunk: &Chunk,
+        texture_resolver: &TextureResolver,
+    ) -> (Vec<Vertex>, Vec<u32>) {
         let mut vertices = Vec::new();
         let mut indices = Vec::new();
 
@@ -366,8 +482,49 @@ impl Renderer {
                     let pos = Vec3::new(x as f32, y as f32, z as f32) + chunk_offset;
                     let color = block.get_color();
 
-                    // Check each face
-                    self.add_block_faces(chunk, x, y, z, pos, color, &mut vertices, &mut indices);
+                    let faces = [
+                        (
+                            BlockFace::Top,
+                            y + 1 >= WORLD_HEIGHT
+                                || !chunk.get_block(x, y + 1, z).is_solid(),
+                        ),
+                        (
+                            BlockFace::Bottom,
+                            y == 0 || !chunk.get_block(x, y.saturating_sub(1), z).is_solid(),
+                        ),
+                        (
+                            BlockFace::North,
+                            z + 1 >= CHUNK_SIZE
+                                || !chunk.get_block(x, y, z + 1).is_solid(),
+                        ),
+                        (
+                            BlockFace::South,
+                            z == 0 || !chunk.get_block(x, y, z - 1).is_solid(),
+                        ),
+                        (
+                            BlockFace::East,
+                            x + 1 >= CHUNK_SIZE
+                                || !chunk.get_block(x + 1, y, z).is_solid(),
+                        ),
+                        (
+                            BlockFace::West,
+                            x == 0 || !chunk.get_block(x - 1, y, z).is_solid(),
+                        ),
+                    ];
+
+                    for (face, visible) in faces {
+                        if visible {
+                            Self::emit_face(
+                                block,
+                                face,
+                                pos,
+                                color,
+                                texture_resolver,
+                                &mut vertices,
+                                &mut indices,
+                            );
+                        }
+                    }
                 }
             }
         }
@@ -375,171 +532,127 @@ impl Renderer {
         (vertices, indices)
     }
 
-    fn add_block_faces(
-        &self,
-        chunk: &Chunk,
-        x: usize,
-        y: usize,
-        z: usize,
-        pos: Vec3,
+    fn emit_face(
+        block: BlockType,
+        face: BlockFace,
+        base_pos: Vec3,
         color: [f32; 3],
+        texture_resolver: &TextureResolver,
         vertices: &mut Vec<Vertex>,
         indices: &mut Vec<u32>,
     ) {
-        // Check neighbors and add faces
-        let faces = [
-            // Top (+Y)
-            (
-                y + 1 >= WORLD_HEIGHT || !chunk.get_block(x, y + 1, z).is_solid(),
-                [
-                    [0.0, 1.0, 0.0],
-                    [0.0, 1.0, 1.0],
-                    [1.0, 1.0, 1.0],
-                    [1.0, 1.0, 0.0],
+        let rect = texture_resolver.uv(texture_key_for(block, face));
+        let positions = Self::face_vertices(face);
+        let uvs = Self::face_uvs(face, rect);
+        let normal = Self::face_normal(face);
+
+        let start_index = vertices.len() as u32;
+        for (pos_offset, tex) in positions.iter().zip(uvs.iter()) {
+            vertices.push(Vertex {
+                position: [
+                    base_pos.x + pos_offset[0],
+                    base_pos.y + pos_offset[1],
+                    base_pos.z + pos_offset[2],
                 ],
+                tex_coords: *tex,
+                color,
+                normal,
+            });
+        }
+
+        indices.extend_from_slice(&[
+            start_index,
+            start_index + 1,
+            start_index + 2,
+            start_index,
+            start_index + 2,
+            start_index + 3,
+        ]);
+    }
+
+    fn face_vertices(face: BlockFace) -> [[f32; 3]; 4] {
+        match face {
+            BlockFace::Top => [
                 [0.0, 1.0, 0.0],
-            ),
-            // Bottom (-Y)
-            (
-                y == 0 || !chunk.get_block(x, y - 1, z).is_solid(),
-                [
-                    [0.0, 0.0, 0.0],
-                    [1.0, 0.0, 0.0],
-                    [1.0, 0.0, 1.0],
-                    [0.0, 0.0, 1.0],
-                ],
-                [0.0, -1.0, 0.0],
-            ),
-            // Front (+Z)
-            (
-                z + 1 >= CHUNK_SIZE || !chunk.get_block(x, y, z + 1).is_solid(),
-                [
-                    [0.0, 0.0, 1.0],
-                    [1.0, 0.0, 1.0],
-                    [1.0, 1.0, 1.0],
-                    [0.0, 1.0, 1.0],
-                ],
-                [0.0, 0.0, 1.0],
-            ),
-            // Back (-Z)
-            (
-                z == 0 || !chunk.get_block(x, y, z - 1).is_solid(),
-                [
-                    [0.0, 0.0, 0.0],
-                    [0.0, 1.0, 0.0],
-                    [1.0, 1.0, 0.0],
-                    [1.0, 0.0, 0.0],
-                ],
-                [0.0, 0.0, -1.0],
-            ),
-            // Right (+X)
-            (
-                x + 1 >= CHUNK_SIZE || !chunk.get_block(x + 1, y, z).is_solid(),
-                [
-                    [1.0, 0.0, 0.0],
-                    [1.0, 1.0, 0.0],
-                    [1.0, 1.0, 1.0],
-                    [1.0, 0.0, 1.0],
-                ],
+                [0.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, 0.0],
+            ],
+            BlockFace::Bottom => [
+                [0.0, 0.0, 0.0],
                 [1.0, 0.0, 0.0],
-            ),
-            // Left (-X)
-            (
-                x == 0 || !chunk.get_block(x - 1, y, z).is_solid(),
-                [
-                    [0.0, 0.0, 0.0],
-                    [0.0, 0.0, 1.0],
-                    [0.0, 1.0, 1.0],
-                    [0.0, 1.0, 0.0],
-                ],
-                [-1.0, 0.0, 0.0],
-            ),
-        ];
-
-        for (visible, face_vertices, normal) in &faces {
-            if *visible {
-                let start_index = vertices.len() as u32;
-
-                for vertex_pos in face_vertices {
-                    vertices.push(Vertex {
-                        position: [
-                            pos.x + vertex_pos[0],
-                            pos.y + vertex_pos[1],
-                            pos.z + vertex_pos[2],
-                        ],
-                        color,
-                        normal: *normal,
-                    });
-                }
-
-                // Two triangles per face
-                indices.extend_from_slice(&[
-                    start_index,
-                    start_index + 1,
-                    start_index + 2,
-                    start_index,
-                    start_index + 2,
-                    start_index + 3,
-                ]);
-            }
+                [1.0, 0.0, 1.0],
+                [0.0, 0.0, 1.0],
+            ],
+            BlockFace::North => [
+                [0.0, 0.0, 1.0],
+                [1.0, 0.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [0.0, 1.0, 1.0],
+            ],
+            BlockFace::South => [
+                [0.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [1.0, 1.0, 0.0],
+                [1.0, 0.0, 0.0],
+            ],
+            BlockFace::East => [
+                [1.0, 0.0, 0.0],
+                [1.0, 1.0, 0.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 0.0, 1.0],
+            ],
+            BlockFace::West => [
+                [0.0, 0.0, 0.0],
+                [0.0, 0.0, 1.0],
+                [0.0, 1.0, 1.0],
+                [0.0, 1.0, 0.0],
+            ],
         }
     }
 
-    pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
-        let output = self.surface.get_current_texture()?;
-        let view = output
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
+    fn face_uvs(face: BlockFace, rect: AtlasUV) -> [[f32; 2]; 4] {
+        let base = [
+            [rect.u_min, rect.v_min],
+            [rect.u_min, rect.v_max],
+            [rect.u_max, rect.v_max],
+            [rect.u_max, rect.v_min],
+        ];
 
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("Render Encoder"),
-            });
-
-        {
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Render Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.53,
-                            g: 0.81,
-                            b: 0.92,
-                            a: 1.0,
-                        }),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &self.depth_view,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(1.0),
-                        store: wgpu::StoreOp::Store,
-                    }),
-                    stencil_ops: None,
-                }),
-                timestamp_writes: None,
-                occlusion_query_set: None,
-            });
-
-            render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
-
-            for mesh in self.chunk_meshes.values() {
-                render_pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
-                render_pass
-                    .set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-                render_pass.draw_indexed(0..mesh.num_indices, 0, 0..1);
-            }
+        match face {
+            BlockFace::Top => base,
+            BlockFace::Bottom => [
+                [rect.u_min, rect.v_max],
+                [rect.u_max, rect.v_max],
+                [rect.u_max, rect.v_min],
+                [rect.u_min, rect.v_min],
+            ],
+            BlockFace::North => base,
+            BlockFace::South => [
+                [rect.u_max, rect.v_min],
+                [rect.u_max, rect.v_max],
+                [rect.u_min, rect.v_max],
+                [rect.u_min, rect.v_min],
+            ],
+            BlockFace::East => base,
+            BlockFace::West => [
+                [rect.u_max, rect.v_min],
+                [rect.u_min, rect.v_min],
+                [rect.u_min, rect.v_max],
+                [rect.u_max, rect.v_max],
+            ],
         }
+    }
 
-        self.queue.submit(std::iter::once(encoder.finish()));
-        output.present();
-
-        Ok(())
+    fn face_normal(face: BlockFace) -> [f32; 3] {
+        match face {
+            BlockFace::Top => [0.0, 1.0, 0.0],
+            BlockFace::Bottom => [0.0, -1.0, 0.0],
+            BlockFace::North => [0.0, 0.0, 1.0],
+            BlockFace::South => [0.0, 0.0, -1.0],
+            BlockFace::East => [1.0, 0.0, 0.0],
+            BlockFace::West => [-1.0, 0.0, 0.0],
+        }
     }
 
     // Render the 3D scene into an existing command encoder and texture view.
@@ -573,6 +686,9 @@ impl Renderer {
 
         render_pass.set_pipeline(&self.render_pipeline);
         render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
+        if let Some(bind_group) = &self.texture_bind_group {
+            render_pass.set_bind_group(1, bind_group, &[]);
+        }
 
         for mesh in self.chunk_meshes.values() {
             render_pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
@@ -586,5 +702,3 @@ impl Renderer {
         &self.depth_view
     }
 }
-
-use wgpu::util::DeviceExt;
