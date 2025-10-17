@@ -25,15 +25,14 @@ Uses `ghcr.io/pterodactyl/images:node-18` or `ghcr.io/pterodactyl/images:node-20
 
 ## Installation Script
 The egg includes an automatic installation script that:
-- Installs npm dependencies
-- Builds the server bundle
-- Creates logs directory
+# Pterodactyl Setup (Legacy)
 
-## Server API
-The server exposes a REST API at the root endpoint (`/`) that returns server information in JSON format.
+The original JavaScript/Node.js implementation shipped with a dedicated multiplayer server that could be deployed on Pterodactyl via `pterodactyl-egg.json`. The current Rust rewrite focuses on a single-player native client and does **not** include a standalone server.
 
-## Notes
-- The server binds to 0.0.0.0 for proper networking
-- Graceful shutdown is implemented for SIGINT and SIGTERM
-- Uses Socket.IO for real-time multiplayer communication
-- Default port is 3000 if not specified by Pterodactyl
+## Current Status
+
+- Rust client: single-player only
+- Dedicated server: not implemented
+- Pterodactyl egg: archived alongside the legacy JavaScript branch for reference
+
+If multiplayer support is reintroduced in the Rust version, this document will be updated with new deployment instructions. Until then, the legacy egg remains available solely for historical purposes.

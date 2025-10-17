@@ -1,118 +1,72 @@
-# 🎮 Minecraft Clone - Two Versions Available!
+# 🎮 Minecraft Clone Branch Overview
 
-This repository contains **two complete implementations** of a Minecraft clone:
+This repository now defaults to the **Rust rewrite** for native performance. The legacy JavaScript implementation remains available on a separate branch for reference.
 
 ## 📦 Branches
 
-### `main` / `copilot/rewrite-game-code-language` - JavaScript Version
-The original implementation using JavaScript, Electron, and Three.js.
+### `main` — Rust Edition (Current Default)
+Native Rust + `wgpu` renderer delivering high performance and a lightweight binary.
 
-**Features:**
-- ✅ Multiplayer (local & dedicated server)
-- ✅ Mod system with hot reload
-- ✅ Pterodactyl server support
-- ✅ Advanced graphics (PBR, ray tracing simulation)
-- ✅ Electron desktop app
-
-**Quick Start:**
-```bash
-git checkout main
-npm install
-npm run start:client
-```
-
-See [README.md](README.md) for full JavaScript documentation.
-
----
-
-### `rust-rewrite` - Rust Version ⭐ NEW!
-A complete rewrite in Rust for better performance and smaller distribution.
-
-**Features:**
-- ✅ Native performance (2-3x faster)
-- ✅ Small binary (~10MB vs ~100MB+)
-- ✅ Modern graphics (wgpu/WebGPU)
-- ✅ Lower memory usage
-- ✅ All core gameplay features
-- ❌ No multiplayer (excluded per requirements)
+**Highlights:**
+- ✅ Native binary (~10 MB)
+- ✅ 2–3× faster rendering compared to Electron build
+- ✅ Modern graphics pipeline (WebGPU/Vulkan/Metal/DX12)
+- ✅ Procedural world with chunk streaming
+- ❌ Multiplayer not yet reimplemented
 
 **Quick Start:**
 ```bash
-git checkout rust-rewrite
+git clone https://github.com/Olaf-Klein/javascript-minecraft-clone.git
+cd javascript-minecraft-clone
 cargo run --release
 ```
 
-See [README_RUST.md](README_RUST.md) for full Rust documentation.
+See [README.md](README.md) and [QUICKSTART.md](QUICKSTART.md) for full documentation.
+
+---
+
+### `legacy/javascript` (or similar) — Electron Edition
+The original JavaScript/Electron implementation with dedicated server and modding support. Check the branch list if you need this version.
+
+**Highlights:**
+- ✅ Multiplayer (LAN + dedicated server)
+- ✅ Modding API with hot reload
+- ✅ Pterodactyl deployment tooling
+- ❌ Large install size (~100 MB+) and higher resource usage
+
+**Quick Start (on the legacy branch):**
+```bash
+git checkout <legacy-branch-name>
+npm run install:all
+npm run start:client
+```
+
+Refer to that branch’s README for details.
 
 ---
 
 ## 🤔 Which Version Should I Use?
 
-### Choose JavaScript if you want:
-- Multiplayer support
-- Modding capabilities
-- Easier to modify/extend
-- Proven, stable codebase
-
-### Choose Rust if you want:
-- Better performance
-- Smaller download size
-- Native application feel
-- Lower resource usage
-- Future-proof graphics API
+- **Rust (main)**: choose for best performance, native feel, and slimmer distribution.
+- **JavaScript (legacy)**: choose for multiplayer, modding, or if you rely on the Electron toolchain.
 
 ## 📊 Quick Comparison
 
-| Feature | JavaScript | Rust |
-|---------|-----------|------|
-| Performance | Good | Excellent |
-| Binary Size | ~100MB+ | ~10MB |
-| Startup Time | 2-3s | <1s |
-| Memory Usage | 200-300MB | 50-100MB |
-| Multiplayer | ✅ | ❌ |
-| Mod Support | ✅ | Planned |
-
-## 📚 Documentation
-
-### Rust Version
-- [README_RUST.md](README_RUST.md) - Complete documentation
-- [QUICKSTART.md](QUICKSTART.md) - Get started in 5 minutes
-- [COMPARISON.md](COMPARISON.md) - Detailed comparison
-- [RUST_SUMMARY.md](RUST_SUMMARY.md) - Project summary
-
-### JavaScript Version
-- [README.md](README.md) - Original documentation
-
-## 🚀 Getting Started
-
-**For JavaScript version:**
-```bash
-git clone https://github.com/Olaf-Klein/javascript-minecraft-clone.git
-cd javascript-minecraft-clone
-npm run install:all
-npm run start:client
-```
-
-**For Rust version:**
-```bash
-git clone https://github.com/Olaf-Klein/javascript-minecraft-clone.git
-cd javascript-minecraft-clone
-git checkout rust-rewrite
-cargo run --release
-```
-
-## 🎯 Project Status
-
-Both versions are **complete and functional**:
-- ✅ JavaScript: Full-featured with multiplayer
-- ✅ Rust: Full-featured without multiplayer (as requested)
+| Feature | Rust (main) | JavaScript (legacy) |
+|---------|--------------|----------------------|
+| Performance | Excellent | Good |
+| Binary Size | ~10 MB | ~100 MB+ |
+| Startup Time | < 1 s | 2–3 s |
+| Memory Usage | 50–100 MB | 200–300 MB |
+| Multiplayer | ❌ Pending | ✅ Built-in |
+| Mod Support | 🔲 Planned | ✅ Available |
 
 ## 📝 License
 
-MIT License - See LICENSE file
+MIT License
 
 ---
 
 **Happy gaming! 🎮**
 
-Choose the version that fits your needs and enjoy building in your procedurally generated world!
+Pick the branch that matches your needs and enjoy exploring the blocky world!

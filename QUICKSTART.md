@@ -1,4 +1,4 @@
-# Quick Start Guide - Rust Edition
+# Quick Start Guide — Rust Edition
 
 Welcome to the Minecraft Clone Rust Edition! This guide will get you playing in under 5 minutes.
 
@@ -15,9 +15,6 @@ Welcome to the Minecraft Clone Rust Edition! This guide will get you playing in 
 # Clone the repository
 git clone https://github.com/Olaf-Klein/javascript-minecraft-clone.git
 cd javascript-minecraft-clone
-
-# Switch to Rust version
-git checkout rust-rewrite
 
 # Run the game (this will compile and start)
 cargo run --release
@@ -138,7 +135,7 @@ Edit these values to customize your experience!
 1. Explore the world and enjoy the improved performance!
 2. Try adjusting graphics settings to see the impact
 3. Check out [COMPARISON.md](COMPARISON.md) for detailed differences
-4. Read [README_RUST.md](README_RUST.md) for technical details
+4. Read [README.md](README.md) for full documentation
 
 ## Getting Help
 

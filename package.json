@@ -1,33 +1,15 @@
 {
-  "name": "javascript-minecraft-clone",
-  "version": "1.0.0",
-  "description": "A JavaScript Minecraft clone with desktop client and dedicated server support",
-  "main": "index.js",
-  "scripts": {
-    "start": "npm run start:client",
-    "start:client": "cd client && npm start",
-    "start:server": "cd server && npm start",
-    "build": "npm run build:client && npm run build:server",
-    "build:client": "cd client && npm run build",
-    "build:server": "cd server && npm run build",
-    "dist": "npm run build && cd client && npm run dist",
-    "dist:win": "npm run build && cd client && npm run dist:win",
-    "dist:mac": "npm run build && cd client && npm run dist:mac",
-    "dist:linux": "npm run build && cd client && npm run dist:linux",
-    "test": "npm run test:client && npm run test:server",
-    "test:client": "cd client && npm test",
-    "test:server": "cd server && npm test",
-    "install:all": "npm install && cd client && npm install && cd ../server && npm install && cd ../shared && npm install"
-  },
-  "keywords": ["minecraft", "clone", "javascript", "electron", "multiplayer"],
-  "author": "Olaf Klein",
+  "name": "minecraft-clone-rust",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Convenience npm scripts for the Rust-based Minecraft clone",
   "license": "MIT",
-  "devDependencies": {
-    "lerna": "^8.0.0"
-  },
-  "workspaces": [
-    "client",
-    "server",
-    "shared"
-  ]
+  "scripts": {
+    "dev": "cargo run",
+    "start": "cargo run --release",
+    "build": "cargo build --release",
+    "check": "cargo check",
+    "fmt": "cargo fmt",
+    "lint": "cargo clippy"
+  }
 }

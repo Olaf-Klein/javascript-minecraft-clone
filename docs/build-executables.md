@@ -1,108 +1,69 @@
-# JavaScript Minecraft Clone - Building Executables
+# Rust Build & Packaging Guide
 
-This guide explains how to build executable files for the JavaScript Minecraft Clone desktop application.
+This guide explains how to build release binaries for the Rust edition of the Minecraft Clone.
 
 ## Prerequisites
 
-- Node.js (v16 or higher)
-- npm or yarn
+- Rust toolchain 1.70 or newer (`rustup` is recommended)
+- Target-specific build tools (see platform notes below)
 
-## Installation
+## Release Build
 
-1. Install dependencies for all workspaces:
-```bash
-npm run install:all
+```
+cargo build --release
 ```
 
-Or install manually:
-```bash
-# Root dependencies
-npm install
+The optimized binary will be created in `target/release/`:
 
-# Client dependencies
-cd client
-npm install
+- Windows: `minecraft-clone.exe`
+- macOS/Linux: `minecraft-clone`
 
-# Server dependencies
-cd ../server
-npm install
+## Running the Release Binary
 
-# Shared dependencies
-cd ../shared
-npm install
+```
+# Windows (PowerShell)
+./target/release/minecraft-clone.exe
+
+# macOS/Linux
+./target/release/minecraft-clone
 ```
 
-## Building Executables
+## Cross-Compilation
 
-### Windows (.exe installer)
+The project supports cross-compiling by installing additional Rust targets:
 
-```bash
-cd client
-npm run dist:win
+```
+# Example: build Windows binary from Windows or WSL
+rustup target add x86_64-pc-windows-msvc
+cargo build --release --target x86_64-pc-windows-msvc
+
+# Example: build Linux binary
+rustup target add x86_64-unknown-linux-gnu
+cargo build --release --target x86_64-unknown-linux-gnu
 ```
 
-This creates a Windows NSIS installer in `client/dist/`.
+### macOS Specifics
 
-### macOS (.dmg)
+- Install Xcode Command Line Tools: `xcode-select --install`
+- For universal builds, compile separately for `x86_64-apple-darwin` and `aarch64-apple-darwin` and use `lipo`
 
-```bash
-cd client
-npm run dist:mac
-```
+### Windows Specifics
 
-This creates a macOS DMG installer in `client/dist/`.
+- Install the Microsoft Build Tools (included with Visual Studio Build Tools)
+- Ensure the `Developer Command Prompt` environment variables are available or use the `x86_64-pc-windows-msvc` default toolchain
 
-### Linux (AppImage)
+### Linux Specifics
 
-```bash
-cd client
-npm run dist:linux
-```
+- Install system dependencies required by `wgpu`, typically via the package manager (Vulkan SDK, X11/Wayland dev headers)
 
-This creates a Linux AppImage in `client/dist/`.
+## Packaging Suggestions
 
-### All Platforms
-
-```bash
-cd client
-npm run dist
-```
-
-This builds for all configured platforms.
-
-## Icon Generation
-
-Icons are automatically generated from the SVG file during the build process:
-
-```bash
-cd client
-npm run generate-icons
-```
-
-This uses the `sharp` library to convert `assets/icon.svg` to the required formats.
-
-## Running the Application
-
-### Development Mode
-
-```bash
-# Start client
-npm run start:client
-
-# Start server
-npm run start:server
-```
-
-### Production Build
-
-After building the executable, run the installer or executable file directly.
-
-## Distribution
-
-The built executables are located in `client/dist/` and can be distributed to users for easy installation and execution on their devices.
+- **Windows**: bundle the executable using tools like Inno Setup or `cargo wix`
+- **macOS**: wrap the binary in an `.app` bundle via tools such as `cargo-bundle`
+- **Linux**: distribute the binary directly or package with `.deb`, `.rpm`, or `AppImage` using community tooling
 
 ## Troubleshooting
 
-- If icon generation fails, ensure `sharp` is installed: `npm install --save-dev sharp`
-- If builds fail, ensure all dependencies are installed in all workspaces
-- For Windows builds, ensure you have the Windows Build Tools installed if needed
+- **Linker errors**: verify platform build tools are installed and `rustup toolchain list` shows the target
+- **Missing GPU backend**: ensure the target platform drivers are present (Vulkan/Metal/DX12)
+- **Binary fails to run on another machine**: ship the necessary runtime dependencies (e.g., MSVC redistributable on Windows)

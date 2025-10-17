@@ -184,39 +184,15 @@ module.exports = {
             for (let dx = -2; dx <= 2; dx++) {
               for (let dz = -2; dz <= 2; dz++) {
                 for (let dy = 3; dy <= 5; dy++) {
-                  if (Math.abs(dx) + Math.abs(dz) + Math.abs(dy - 4) <= 3) {
-                    world.setBlock(worldX + dx, height + dy, worldZ + dz, leavesId);
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  },
-};
-```
+                  # Modding Status
 
-## Hot Reloading
+                  The legacy JavaScript version of the project featured a comprehensive modding API. The current Rust rewrite focuses on core gameplay and rendering performance, and a new modding system has not been implemented yet.
 
-Mods support hot reloading - changes to mod files are automatically detected and the mod is reloaded without restarting the server. This makes development much faster.
+                  ## Roadmap
 
-## Best Practices
+                  - Expose a stable scripting API (likely via WASM or dynamic libraries)
+                  - Provide hooks for terrain generation, block events, and player actions
+                  - Support hot-reload during development
+                  - Document mod packaging and distribution workflows
 
-1. **Error Handling**: Always wrap your code in try-catch blocks
-2. **Performance**: Don't do expensive operations in frequently called event handlers
-3. **Compatibility**: Check if blocks/items exist before using them
-4. **Cleanup**: Implement the `cleanup()` method to remove event listeners and clean up resources
-5. **Documentation**: Comment your code and provide clear mod descriptions
-
-## Distribution
-
-Mods can be distributed as:
-- Single `.js` files in the `mods/` directory
-- Directories with an `index.js` file and additional assets
-- NPM packages (future feature)
-
-## API Versioning
-
-The mod API follows semantic versioning. Breaking changes will be clearly documented in release notes.
+                  If you are interested in contributing to the future modding API, please open a discussion or proposal describing desired hooks and use cases.

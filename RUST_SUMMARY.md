@@ -2,12 +2,12 @@
 
 ## Overview
 
-This is a complete rewrite of the JavaScript Minecraft Clone in Rust, chosen as the "best fitting language" for a high-performance voxel game.
+This repository now defaults to the Rust rewrite of the JavaScript Minecraft Clone, chosen as the "best fitting language" for a high-performance voxel game.
 
 ## Branch Structure
 
-- `main` / `copilot/rewrite-game-code-language`: Original JavaScript version
-- `rust-rewrite`: **NEW** Rust rewrite (this branch)
+- `main`: Rust rewrite (current default)
+- Legacy JavaScript implementation: preserved on a separate branch for reference (see repository branches)
 
 ## Why Rust?
 
@@ -103,22 +103,14 @@ rust-rewrite/
 ## Build & Run
 
 ```bash
-# Clone and switch to rust-rewrite branch
 git clone https://github.com/Olaf-Klein/javascript-minecraft-clone.git
 cd javascript-minecraft-clone
-git checkout rust-rewrite
-
-# Run (compiles automatically)
 cargo run --release
-
-# Or use build script
-./build.sh
-./target/release/minecraft-clone
 ```
 
 ## Documentation
 
-- **[README_RUST.md](README_RUST.md)**: Complete Rust version documentation
+- **[README.md](README.md)**: Complete Rust version documentation
 - **[QUICKSTART.md](QUICKSTART.md)**: Get started in 5 minutes
 - **[COMPARISON.md](COMPARISON.md)**: Detailed JS vs Rust comparison
 
