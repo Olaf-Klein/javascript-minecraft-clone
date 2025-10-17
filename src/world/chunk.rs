@@ -101,14 +101,18 @@ impl World {
                 let world_z = chunk_world_z + z as i32;
 
                 // Base terrain height (40-120)
-                let base_height = 40.0
-                    + self.sample_noise(world_x as f64, world_z as f64, 6, 0.5, 0.005) * 80.0;
+                let base_height =
+                    40.0 + self.sample_noise(world_x as f64, world_z as f64, 6, 0.5, 0.005) * 80.0;
 
                 // Add hills and valleys
-                let hill_noise = self.sample_noise(world_x as f64, world_z as f64, 3, 0.7, 0.02) * 20.0;
-                let valley_noise = self.sample_noise(world_x as f64, world_z as f64, 2, 0.8, 0.01) * 15.0;
+                let hill_noise =
+                    self.sample_noise(world_x as f64, world_z as f64, 3, 0.7, 0.02) * 20.0;
+                let valley_noise =
+                    self.sample_noise(world_x as f64, world_z as f64, 2, 0.8, 0.01) * 15.0;
 
-                height_map[x][z] = (base_height + hill_noise - valley_noise).max(1.0).min(WORLD_HEIGHT as f64 - 1.0) as usize;
+                height_map[x][z] = (base_height + hill_noise - valley_noise)
+                    .max(1.0)
+                    .min(WORLD_HEIGHT as f64 - 1.0) as usize;
             }
         }
 
@@ -165,27 +169,61 @@ impl World {
         let world_z = chunk_world_z + z as i32;
 
         for y in 1..surface_height.min(WORLD_HEIGHT - 1) {
-            let ore_noise = self.noise.get([
-                world_x as f64 * 0.1,
-                y as f64 * 0.1,
-                world_z as f64 * 0.1,
-            ]);
+            let ore_noise =
+                self.noise
+                    .get([world_x as f64 * 0.1, y as f64 * 0.1, world_z as f64 * 0.1]);
 
             // Coal (common, all heights)
             if ore_noise > 0.6 && y > 0 && y < 128 {
-                chunk.set_block(x, y, z, if y < 16 { BlockType::DeepslateCoalOre } else { BlockType::CoalOre });
+                chunk.set_block(
+                    x,
+                    y,
+                    z,
+                    if y < 16 {
+                        BlockType::DeepslateCoalOre
+                    } else {
+                        BlockType::CoalOre
+                    },
+                );
             }
             // Iron (medium depth)
             else if ore_noise > 0.7 && y > 0 && y < 64 {
-                chunk.set_block(x, y, z, if y < 16 { BlockType::DeepslateIronOre } else { BlockType::IronOre });
+                chunk.set_block(
+                    x,
+                    y,
+                    z,
+                    if y < 16 {
+                        BlockType::DeepslateIronOre
+                    } else {
+                        BlockType::IronOre
+                    },
+                );
             }
             // Gold (deeper)
             else if ore_noise > 0.75 && y > 0 && y < 32 {
-                chunk.set_block(x, y, z, if y < 16 { BlockType::DeepslateGoldOre } else { BlockType::GoldOre });
+                chunk.set_block(
+                    x,
+                    y,
+                    z,
+                    if y < 16 {
+                        BlockType::DeepslateGoldOre
+                    } else {
+                        BlockType::GoldOre
+                    },
+                );
             }
             // Diamond (very deep, rare)
             else if ore_noise > 0.8 && y > 1 && y < 20 {
-                chunk.set_block(x, y, z, if y < 16 { BlockType::DeepslateDiamondOre } else { BlockType::DiamondOre });
+                chunk.set_block(
+                    x,
+                    y,
+                    z,
+                    if y < 16 {
+                        BlockType::DeepslateDiamondOre
+                    } else {
+                        BlockType::DiamondOre
+                    },
+                );
             }
         }
     }

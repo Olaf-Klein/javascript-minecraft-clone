@@ -1,7 +1,7 @@
+use crate::settings::{GameSettings, QualityPreset};
 use egui::{self, FontDefinitions};
 use egui_winit::State;
 use winit::window::Window;
-use crate::settings::{GameSettings, QualityPreset};
 
 pub struct Gui {
     pub egui_ctx: egui::Context,
@@ -71,7 +71,12 @@ impl Gui {
     }
 
     /// Draw settings window. The settings reference is mutated directly by the UI.
-    pub fn draw_settings_window(&self, ctx: &egui::Context, settings: &mut GameSettings, open: &mut bool) {
+    pub fn draw_settings_window(
+        &self,
+        ctx: &egui::Context,
+        settings: &mut GameSettings,
+        open: &mut bool,
+    ) {
         egui::Window::new("Settings")
             .resizable(true)
             .open(open)
@@ -129,8 +134,14 @@ impl Gui {
 
                 ui.add_space(8.0);
                 ui.heading("Gameplay");
-                ui.add(egui::Slider::new(&mut settings.mouse_sensitivity, 0.001..=0.05).text("Mouse Sensitivity"));
-                if ui.checkbox(&mut settings.show_fps, "Show FPS Overlay").changed() {
+                ui.add(
+                    egui::Slider::new(&mut settings.mouse_sensitivity, 0.001..=0.05)
+                        .text("Mouse Sensitivity"),
+                );
+                if ui
+                    .checkbox(&mut settings.show_fps, "Show FPS Overlay")
+                    .changed()
+                {
                     let _ = settings.save();
                 }
 

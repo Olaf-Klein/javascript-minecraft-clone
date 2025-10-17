@@ -74,11 +74,14 @@ impl Renderer {
             .copied()
             .find(|mode| matches!(mode, wgpu::PresentMode::AutoVsync | wgpu::PresentMode::Fifo))
             .unwrap_or(wgpu::PresentMode::Fifo);
-        let non_vsync_mode = surface_caps
-            .present_modes
-            .iter()
-            .copied()
-            .find(|mode| matches!(mode, wgpu::PresentMode::AutoNoVsync | wgpu::PresentMode::Immediate | wgpu::PresentMode::Mailbox));
+        let non_vsync_mode = surface_caps.present_modes.iter().copied().find(|mode| {
+            matches!(
+                mode,
+                wgpu::PresentMode::AutoNoVsync
+                    | wgpu::PresentMode::Immediate
+                    | wgpu::PresentMode::Mailbox
+            )
+        });
 
         let present_mode = if vsync_enabled {
             default_vsync_mode
@@ -364,16 +367,7 @@ impl Renderer {
                     let color = block.get_color();
 
                     // Check each face
-                    self.add_block_faces(
-                        chunk,
-                        x,
-                        y,
-                        z,
-                        pos,
-                        color,
-                        &mut vertices,
-                        &mut indices,
-                    );
+                    self.add_block_faces(chunk, x, y, z, pos, color, &mut vertices, &mut indices);
                 }
             }
         }
@@ -536,7 +530,8 @@ impl Renderer {
 
             for mesh in self.chunk_meshes.values() {
                 render_pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
-                render_pass.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+                render_pass
+                    .set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
                 render_pass.draw_indexed(0..mesh.num_indices, 0, 0..1);
             }
         }

@@ -51,7 +51,6 @@ The repository also ships with `build.sh` (Bash) for convenience on Unix-like sy
 |---------------|----------------------|
 | Move          | W / A / S / D        |
 | Fly up / down | Space / Shift        |
-| Sprint        | Hold Shift while moving |
 | Look around   | Mouse                |
 | Toggle cursor | Escape               |
 | Re-capture    | Left mouse button    |

@@ -45,7 +45,6 @@ The first build will take a few minutes. Subsequent runs are much faster!
 | Strafe Right | D |
 | Fly Up | Space |
 | Fly Down | Shift |
-| Sprint | Hold Shift while moving horizontally |
 | Look Around | Move Mouse |
 | Release Mouse | Escape |
 | Exit Game | Escape (when mouse is released) |

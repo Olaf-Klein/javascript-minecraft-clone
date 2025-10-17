@@ -1,6 +1,5 @@
 /// Block types matching the JavaScript implementation
 /// Covers all vanilla Minecraft blocks for 1.21.10 compatibility
-
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -147,9 +146,7 @@ impl BlockType {
             | BlockType::JungleLog
             | BlockType::AcaciaLog
             | BlockType::DarkOakLog => 2.0,
-            BlockType::OakPlanks
-            | BlockType::SprucePlanks
-            | BlockType::BirchPlanks => 2.0,
+            BlockType::OakPlanks | BlockType::SprucePlanks | BlockType::BirchPlanks => 2.0,
             BlockType::OakLeaves => 0.2,
             BlockType::Glass | BlockType::WhiteStainedGlass => 0.3,
             BlockType::Netherrack => 0.4,
