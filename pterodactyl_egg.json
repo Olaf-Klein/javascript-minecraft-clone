@@ -1,0 +1,33 @@
+{
+  "meta": {
+    "version": "1.0",
+    "name": "Minecraft Clone (Rust) Server",
+    "author": "Olaf Klein",
+    "description": "Minimal TCP multiplayer server for the Minecraft Clone project. Uses the built server binary `minecraft-clone-server`."
+  },
+  "container": {
+    "#note": "Replace YOUR_GITHUB_USERNAME with your actual GitHub username or org.",
+    "image": "ghcr.io/YOUR_GITHUB_USERNAME/mc-clone-server:latest",
+    "startup": "SERVER_ADDR=0.0.0.0:{{SERVER_ALLOC_PORT}} ./minecraft-clone-server",
+    "environment": {
+      "SERVER_ADDR": "0.0.0.0:{{SERVER_ALLOC_PORT}}"
+    }
+  },
+  "build": {
+    "dockerfile": "Dockerfile.server",
+    "copy_files": []
+  },
+  "variables": [
+    {
+      "env_variable": "SERVER_ADDR",
+      "description": "Address and port the server binds to (Pterodactyl will substitute the allocated port).",
+      "default_value": "0.0.0.0:{{SERVER_ALLOC_PORT}}",
+      "user_viewable": true,
+      "user_editable": true
+    }
+  ],
+  "startup": {
+    "command": "SERVER_ADDR=0.0.0.0:{{SERVER_ALLOC_PORT}} ./minecraft-clone-server",
+    "stop": "pkill minecraft-clone-server || true"
+  }
+}

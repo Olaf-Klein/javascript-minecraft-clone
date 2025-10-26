@@ -3,6 +3,7 @@ mod renderer;
 mod settings;
 mod ui;
 mod world;
+use minecraft_clone_rust::net;
 
 use glam::{IVec3, Vec3};
 use input::InputState;
@@ -13,7 +14,7 @@ use renderer::{
     Renderer,
 };
 use settings::{GameSettings, TextureQuality};
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
 use std::sync::{mpsc::{self, TryRecvError}, Arc};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -102,6 +103,13 @@ struct App {
     texture_resolver: Arc<TextureResolver>,
     pending_atlas_upload: Option<PendingAtlasUpload>,
     active_texture_quality: TextureQuality,
+    // Multiplayer client handle (None when not connected)
+    net_client: Option<net::ClientHandle>,
+    // UI state for multiplayer connect dialog
+    multiplayer_open: bool,
+    multiplayer_server_addr: String,
+    // Remote players received from server (id -> snapshot)
+    remote_players: HashMap<u64, net::protocol::PlayerSnapshot>,
     mesh_response_rx: mpsc::Receiver<ChunkMeshResponse>,
     pending_chunk_meshes: HashSet<(i32, i32)>,
     last_auto_save: Instant,
@@ -161,6 +169,10 @@ impl App {
             delta_time: Duration::from_millis(16),
             mesh_request_tx,
             mesh_response_rx,
+        net_client: None,
+        multiplayer_open: false,
+        multiplayer_server_addr: String::new(),
+        remote_players: HashMap::new(),
             pending_chunk_meshes: HashSet::new(),
             last_auto_save: Instant::now(),
             last_save_timestamp: None,
@@ -800,6 +812,40 @@ impl App {
             renderer.update_camera(&self.camera);
             renderer.update_chunks(&self.world, self.camera.position, render_distance);
         }
+
+        // Networking: process incoming server messages and send our position
+        if let Some(client) = &self.net_client {
+            // Drain incoming messages
+            loop {
+                match client.recv.try_recv() {
+                    Ok(server_msg) => match server_msg {
+                        net::protocol::ServerMessage::WorldState { players } => {
+                            self.remote_players.clear();
+                            for p in players {
+                                self.remote_players.insert(p.id, p);
+                            }
+                        }
+                        _ => {}
+                    },
+                    Err(TryRecvError::Empty) => break,
+                    Err(TryRecvError::Disconnected) => {
+                        // Server/runtime disconnected
+                        self.net_client = None;
+                        break;
+                    }
+                }
+            }
+
+            // Send our current position to server (best-effort)
+            let pos_msg = net::protocol::ClientMessage::Position {
+                x: self.camera.position.x,
+                y: self.camera.position.y,
+                z: self.camera.position.z,
+                yaw: self.camera.yaw,
+                pitch: self.camera.pitch,
+            };
+            let _ = self.net_client.as_ref().unwrap().send.send(pos_msg);
+        }
     }
 }
 
@@ -964,6 +1010,10 @@ impl ApplicationHandler for App {
                                                 1.0 / self.delta_time.as_secs_f32()
                                             ));
                                         }
+                                        // show remote players count when connected
+                                        if !self.remote_players.is_empty() {
+                                            ui.label(format!("Players: {}", self.remote_players.len()));
+                                        }
                                     },
                                 );
                             });
@@ -997,7 +1047,8 @@ impl ApplicationHandler for App {
                                             self.screen = AppScreen::Worlds;
                                         }
                                         if ui.button("Multiplayer").clicked() {
-                                            // no-op for now
+                                            // open the multiplayer connect dialog
+                                            self.multiplayer_open = true;
                                         }
                                         if ui.button("Options").clicked() {
                                             self.screen_prev = Some(self.screen);
@@ -1005,6 +1056,40 @@ impl ApplicationHandler for App {
                                         }
                                         if ui.button("Quit").clicked() {
                                             request_quit = true;
+                                        }
+                                        // Multiplayer connect window
+                                        if self.multiplayer_open {
+                                            egui::Window::new("Connect to server")
+                                                .resizable(false)
+                                                .show(ctx, |ui| {
+                                                    ui.horizontal(|ui| {
+                                                        ui.label("Server address:");
+                                                        ui.text_edit_singleline(&mut self.multiplayer_server_addr);
+                                                    });
+                                                    ui.horizontal(|ui| {
+                                                        if ui.button("Connect").clicked() {
+                                                            let addr = if self.multiplayer_server_addr.trim().is_empty() {
+                                                                // default to env assigned server port (use localhost)
+                                                                "127.0.0.1:25565".to_string()
+                                                            } else {
+                                                                self.multiplayer_server_addr.clone()
+                                                            };
+                                                            match net::start_client(addr) {
+                                                                Ok(handle) => {
+                                                                    self.net_client = Some(handle);
+                                                                    self.multiplayer_open = false;
+                                                                    self.save_feedback = Some((Instant::now(), "Connected (local)".to_string()));
+                                                                }
+                                                                Err(e) => {
+                                                                    self.save_feedback = Some((Instant::now(), format!("Connect failed: {}", e)));
+                                                                }
+                                                            }
+                                                        }
+                                                        if ui.button("Close").clicked() {
+                                                            self.multiplayer_open = false;
+                                                        }
+                                                    });
+                                                });
                                         }
                                     });
                                 });

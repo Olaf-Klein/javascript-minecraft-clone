@@ -1,0 +1,11 @@
+FROM rust:1.70-slim as builder
+WORKDIR /usr/src/minecraft-clone
+COPY . .
+RUN apt-get update && apt-get install -y pkg-config libssl-dev ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN cargo build --release --bin minecraft-clone-server
+
+FROM debian:bookworm-slim
+COPY --from=builder /usr/src/minecraft-clone/target/release/minecraft-clone-server /usr/local/bin/minecraft-clone-server
+EXPOSE 25565
+ENV SERVER_ADDR=0.0.0.0:25565
+ENTRYPOINT ["/usr/local/bin/minecraft-clone-server"]

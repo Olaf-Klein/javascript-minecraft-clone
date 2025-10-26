@@ -348,7 +348,8 @@ fn generate_leaves(tile_size: u32) -> RgbaImage {
         for x in 0..tile_size {
             let noise = jitter(x, y, 71) as i32 - 128;
             let base = [50i32, 120, 50];
-            let alpha = 200 + (noise / 8).clamp(-40, 40) as u8;
+            // compute in a signed integer first to avoid casting negative offsets to u8
+            let alpha = (200 + (noise / 8).clamp(-40, 40)) as u8;
             let color = [
                 (base[0] + noise / 15).clamp(10, 140) as u8,
                 (base[1] + noise / 10).clamp(50, 200) as u8,

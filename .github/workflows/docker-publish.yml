@@ -1,0 +1,39 @@
+name: Build and publish server image
+
+on:
+  push:
+    # Build and publish when code is pushed to the `alternate-version` branch
+    branches: [ alternate-version ]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR (using PAT)
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          # Use a repository secret named GHCR_PAT (personal access token with write:packages)
+          password: ${{ secrets.GHCR_PAT }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: Dockerfile.server
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/mc-clone-server:latest
+            ghcr.io/${{ github.repository_owner }}/mc-clone-server:${{ github.sha }}
+          platforms: linux/amd64
