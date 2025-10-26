@@ -1,5 +1,8 @@
 mod input;
 mod renderer;
+mod inventory;
+mod mods;
+mod server;
 mod settings;
 mod ui;
 mod world;
@@ -105,6 +108,12 @@ struct App {
     mesh_response_rx: mpsc::Receiver<ChunkMeshResponse>,
     pending_chunk_meshes: HashSet<(i32, i32)>,
     last_auto_save: Instant,
+    inventory: crate::inventory::Inventory,
+    inventory_open: bool,
+    game_time: f64,
+    mod_manager: crate::mods::ModManager,
+    mod_command_rx: std::sync::mpsc::Receiver<crate::mods::ModCommand>,
+    mod_reload_rx: std::sync::mpsc::Receiver<std::path::PathBuf>,
 }
 
 impl App {
@@ -120,15 +129,15 @@ impl App {
             pixels: atlas_build.pixels,
         };
         let world = World::new(None, None);
-        let mut camera = Camera::new(Vec3::new(8.0, 80.0, 8.0), 1.0);
+    let mut camera = Camera::new(Vec3::new(8.0, 80.0, 8.0), 1.0);
         camera.fov = settings.graphics.fov;
 
     let active_texture_quality = settings.graphics.texture_quality;
 
-        let (mesh_request_tx, mesh_request_rx) = mpsc::channel::<ChunkMeshRequest>();
+    let (mesh_request_tx, mesh_request_rx) = mpsc::channel::<ChunkMeshRequest>();
         let (mesh_response_tx, mesh_response_rx) = mpsc::channel::<ChunkMeshResponse>();
 
-        thread::Builder::new()
+    thread::Builder::new()
             .name("chunk-mesh-worker".into())
             .spawn(move || {
                 while let Ok(ChunkMeshRequest { chunk, resolver }) = mesh_request_rx.recv() {
@@ -142,6 +151,74 @@ impl App {
                 }
             })
             .expect("Failed to start chunk mesh worker");
+
+        // Try to load inventory from worlds_dir/player_inv.json (fallback to default hotbar)
+        let inv_path = worlds_dir.join("player_inv.json");
+        let inventory = if let Ok(contents) = std::fs::read_to_string(&inv_path) {
+            serde_json::from_str(&contents).unwrap_or_else(|_| crate::inventory::Inventory::new(36))
+        } else {
+            crate::inventory::Inventory::new(36)
+        };
+
+        // Prepare mod manager and attempt to load scripts from ./mods
+        let mut mod_manager = crate::mods::ModManager::new();
+        // Create a command channel for mod -> game requests
+        let (mod_cmd_tx, mod_cmd_rx) = std::sync::mpsc::channel::<crate::mods::ModCommand>();
+        mod_manager.set_command_sender(mod_cmd_tx);
+
+        if let Ok(entries) = std::fs::read_dir("mods") {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|s| s.to_str()) == Some("rhai") {
+                    if let Err(e) = mod_manager.load_script(&path) {
+                        eprintln!("Failed to load mod {:?}: {}", path, e);
+                    }
+                }
+            }
+        }
+
+        // Create a reload channel and a filesystem watcher using `notify` to get immediate events
+        let (reload_tx, reload_rx) = std::sync::mpsc::channel::<std::path::PathBuf>();
+        let mods_dir = std::path::PathBuf::from("mods");
+        // Spawn a thread that runs the notify watcher and forwards events into reload_tx
+        std::thread::spawn(move || {
+            use notify::{Config, RecommendedWatcher, RecursiveMode, Result as NotifyResult, Watcher, EventKind};
+            use std::sync::mpsc::channel as std_channel;
+
+            // Channel for notify events
+            let (tx, rx) = std_channel();
+            // Create the watcher (blocking thread)
+            let mut watcher: RecommendedWatcher = match RecommendedWatcher::new(tx, Config::default()) {
+                Ok(w) => w,
+                Err(e) => {
+                    eprintln!("Failed to create file watcher: {}", e);
+                    return;
+                }
+            };
+
+            if let Err(e) = watcher.watch(&mods_dir, RecursiveMode::NonRecursive) {
+                eprintln!("Failed to watch mods directory {:?}: {}", mods_dir, e);
+                return;
+            }
+
+            while let Ok(event) = rx.recv() {
+                match event {
+                    Ok(ev) => {
+                        // Look at modified/created events and forward .rhai paths
+                        if let EventKind::Modify(_) | EventKind::Create(_) = ev.kind {
+                            for path in ev.paths.iter() {
+                                if path.extension().and_then(|s| s.to_str()) == Some("rhai") {
+                                    let _ = reload_tx.send(path.clone());
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("watch error: {}", e);
+                    }
+                }
+            }
+        });
 
         Self {
             window: None,
@@ -163,11 +240,17 @@ impl App {
             mesh_response_rx,
             pending_chunk_meshes: HashSet::new(),
             last_auto_save: Instant::now(),
+            inventory,
+            mod_manager,
+            mod_command_rx: mod_cmd_rx,
+            mod_reload_rx: reload_rx,
+            game_time: 0.0,
             last_save_timestamp: None,
             save_feedback: None,
             texture_resolver: initial_resolver,
             pending_atlas_upload: Some(pending_atlas_upload),
             active_texture_quality,
+            inventory_open: false,
         }
     }
 
@@ -277,6 +360,64 @@ impl App {
         let desired = self.settings.graphics.texture_quality;
         if desired != self.active_texture_quality {
             self.reload_texture_atlas(desired);
+        }
+    }
+
+    fn process_mod_commands(&mut self) {
+        // Drain the channel of any pending mod commands
+        loop {
+            match self.mod_command_rx.try_recv() {
+                Ok(cmd) => match cmd {
+                    crate::mods::ModCommand::GetBlock { x, y, z, responder } => {
+                        let block = self.world.get_block_at(x, y, z) as i64;
+                        let _ = responder.send(block);
+                    }
+                    crate::mods::ModCommand::SetBlock { x, y, z, id, responder } => {
+                        let mut applied = false;
+                        if let Some((cx, cz)) = self.world.set_block_at(x, y, z, crate::world::BlockType::from_id(id)) {
+                            self.invalidate_chunk_and_neighbors(cx, cz, glam::IVec3::new(x, y, z));
+                            applied = true;
+                        }
+                        let _ = responder.send(applied);
+                    }
+                    crate::mods::ModCommand::SpawnItem { id, count, responder } => {
+                        let ok = self.inventory.add_item(crate::inventory::ItemStack { id, count }).is_ok();
+                        let _ = responder.send(ok);
+                    }
+                    crate::mods::ModCommand::GetPlayerPos { responder } => {
+                        let pos = self.camera.position;
+                        let _ = responder.send((pos.x, pos.y, pos.z));
+                    }
+                    crate::mods::ModCommand::SetTimeOfDay { time, responder } => {
+                        // in this simple engine we'll just set a game_time value
+                        self.game_time = time;
+                        let _ = responder.send(true);
+                    }
+                    crate::mods::ModCommand::SpawnEntity { ty, x, y, z, responder } => {
+                        // Entities are not implemented yet; just log and return false
+                        println!("spawn_entity requested: {} at {},{},{}", ty, x, y, z);
+                        let _ = responder.send(false);
+                    }
+                },
+                Err(std::sync::mpsc::TryRecvError::Empty) => break,
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => break,
+            }
+        }
+    }
+
+    fn process_mod_reloads(&mut self) {
+        loop {
+            match self.mod_reload_rx.try_recv() {
+                Ok(path) => {
+                    if let Err(e) = self.mod_manager.load_script(&path) {
+                        eprintln!("Failed to reload mod {:?}: {}", path, e);
+                    } else {
+                        println!("Reloaded mod: {:?}", path);
+                    }
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => break,
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => break,
+            }
         }
     }
 
@@ -731,6 +872,11 @@ impl App {
             return;
         }
 
+        // Process mod commands (if any) before game logic so mods can query world state
+        self.process_mod_commands();
+        // Process any requested mod reloads (file modifications detected by the poller thread)
+        self.process_mod_reloads();
+
         let dt = self.delta_time.as_secs_f32();
         let speed = if self.input.is_down() {
             50.0 * dt
@@ -792,14 +938,30 @@ impl App {
                 self.world.save_dirty_chunks();
                 self.world.save_meta();
             }
+            // Save player inventory as part of autosave
+            if let Err(e) = self.save_player_inventory() {
+                eprintln!("Failed to save player inventory: {}", e);
+            }
             self.last_auto_save = Instant::now();
         }
+
+        // Execute loaded mods on each tick
+        self.mod_manager.execute_tick();
 
         // Update renderer
         if let Some(renderer) = &mut self.renderer {
             renderer.update_camera(&self.camera);
             renderer.update_chunks(&self.world, self.camera.position, render_distance);
         }
+    }
+}
+
+impl App {
+    fn save_player_inventory(&self) -> anyhow::Result<()> {
+        let inv_path = self.worlds_dir.join("player_inv.json");
+        let contents = serde_json::to_string_pretty(&self.inventory)?;
+        std::fs::write(inv_path, contents)?;
+        Ok(())
     }
 }
 
@@ -934,6 +1096,7 @@ impl ApplicationHandler for App {
                 }
             }
             WindowEvent::RedrawRequested => {
+                let frame_start = Instant::now();
                 self.update();
 
                 if self.renderer.is_some() && self.gui.is_some() && self.window.is_some() {
@@ -976,6 +1139,8 @@ impl ApplicationHandler for App {
                                 pending_hotbar_selection = Some(new_selection);
                             }
                         }
+                        // Draw inventory UI (hotbar + full inventory window)
+                        gui.draw_inventory(ctx, &mut self.inventory, &mut self.selected_hotbar, &mut self.inventory_open);
                         if matches!(self.screen, AppScreen::Playing) {
                             App::draw_crosshair(ctx);
                         }
@@ -1316,6 +1481,19 @@ impl ApplicationHandler for App {
 
                     if let Some(index) = pending_hotbar_selection {
                         self.select_hotbar(index);
+                    }
+                }
+
+                let cap = if self.screen == AppScreen::Playing {
+                    self.settings.fps_cap_playing
+                } else {
+                    self.settings.fps_cap_menu
+                };
+                if cap > 0 {
+                    let target = Duration::from_secs_f64(1.0 / cap as f64);
+                    let frame_duration = frame_start.elapsed();
+                    if frame_duration < target {
+                        thread::sleep(target - frame_duration);
                     }
                 }
 

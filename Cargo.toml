@@ -8,6 +8,14 @@ authors = ["Olaf Klein"]
 name = "minecraft-clone"
 path = "src/main.rs"
 
+[[bin]]
+name = "dedicated-server"
+path = "src/bin/dedicated_server.rs"
+
+[[bin]]
+name = "launcher"
+path = "src/bin/launcher.rs"
+
 [dependencies]
 # Window and Graphics
 winit = "0.30"
@@ -39,6 +47,12 @@ log = "0.4"
 env_logger = "0.11"
 rand = "0.8"
 dirs = "5.0"
+rhai = "1.12"
+tokio = { version = "1", features = ["full"] }
+notify = "6"
+eframe = "0.30"
+opener = "0.6"
+rfd = "0.12"
 
  
 

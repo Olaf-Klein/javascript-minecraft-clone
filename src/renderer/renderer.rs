@@ -1,9 +1,11 @@
 use super::camera::{Camera, CameraUniform, Vertex};
 use super::texture::{texture_key_for, AtlasUV, BlockFace, TextureResolver};
+use super::advanced::AdvancedRenderer;
 use crate::world::{BlockType, Chunk, World, CHUNK_SIZE, WORLD_HEIGHT};
 use glam::Vec3;
 use std::collections::HashMap;
 use wgpu::util::DeviceExt;
+use bytemuck::{Pod, Zeroable};
 
 pub struct Renderer {
     pub surface: wgpu::Surface<'static>,
@@ -24,6 +26,18 @@ pub struct Renderer {
     atlas_texture_view: Option<wgpu::TextureView>,
     atlas_sampler: wgpu::Sampler,
     chunk_meshes: HashMap<(i32, i32), ChunkMesh>,
+    pub advanced: AdvancedRenderer,
+    // Shadow mapping resources (placeholder)
+    shadow_texture: Option<wgpu::Texture>,
+    shadow_view: Option<wgpu::TextureView>,
+    shadow_sampler: Option<wgpu::Sampler>,
+    shadow_bind_group_layout: Option<wgpu::BindGroupLayout>,
+    shadow_bind_group: Option<wgpu::BindGroup>,
+    // Light uniform and shadow pipeline
+    light_buffer: Option<wgpu::Buffer>,
+    light_bind_group_layout: Option<wgpu::BindGroupLayout>,
+    light_bind_group: Option<wgpu::BindGroup>,
+    shadow_pipeline: Option<wgpu::RenderPipeline>,
 }
 
 struct ChunkMesh {
@@ -196,16 +210,104 @@ impl Renderer {
             border_color: None,
         });
 
+        // Shadow sampler and placeholder bind group layout
+        let shadow_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("Shadow Sampler"),
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::FilterMode::Nearest,
+            lod_min_clamp: 0.0,
+            lod_max_clamp: 4.0,
+            compare: Some(wgpu::CompareFunction::LessEqual),
+            anisotropy_clamp: 1,
+            border_color: None,
+        });
+
+        let shadow_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Shadow Bind Group Layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT | wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Depth,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Comparison),
+                    count: None,
+                },
+            ],
+        });
+
+        // Light uniform layout for shadow pass
+        let light_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Light Bind Group Layout"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+        });
+
         // Load shader
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
         });
 
+        // Create shadow shader and pipeline (depth-only)
+        let shadow_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Shadow Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shadow.wgsl").into()),
+        });
+
+        let shadow_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Shadow Pipeline Layout"),
+            bind_group_layouts: &[&light_bind_group_layout],
+            push_constant_ranges: &[],
+        });
+
+        let shadow_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Shadow Pipeline"),
+            layout: Some(&shadow_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shadow_shader,
+                entry_point: Some("vs_main"),
+                buffers: &[Vertex::desc()],
+                compilation_options: Default::default(),
+            },
+            fragment: None,
+            primitive: wgpu::PrimitiveState::default(),
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: wgpu::TextureFormat::Depth32Float,
+                depth_write_enabled: true,
+                depth_compare: wgpu::CompareFunction::LessEqual,
+                stencil: wgpu::StencilState::default(),
+                bias: wgpu::DepthBiasState::default(),
+            }),
+            multisample: wgpu::MultisampleState::default(),
+            multiview: None,
+            cache: None,
+        });
+
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[&camera_bind_group_layout, &texture_bind_group_layout],
+                bind_group_layouts: &[&camera_bind_group_layout, &texture_bind_group_layout, &shadow_bind_group_layout],
                 push_constant_ranges: &[],
             });
 
@@ -272,8 +374,25 @@ impl Renderer {
             atlas_texture_view: None,
             atlas_sampler,
             chunk_meshes: HashMap::new(),
+            advanced: AdvancedRenderer::new(),
+            shadow_texture: None,
+            shadow_view: None,
+            shadow_sampler: Some(shadow_sampler),
+            shadow_bind_group_layout: Some(shadow_bind_group_layout),
+            shadow_bind_group: None,
+            light_buffer: None,
+            light_bind_group_layout: Some(light_bind_group_layout),
+            light_bind_group: None,
+            shadow_pipeline: Some(shadow_pipeline),
         })
     }
+
+// Light uniform struct used for shadow pass
+#[repr(C)]
+#[derive(Copy, Clone, Pod, Zeroable)]
+struct LightUniform {
+    pub view_proj: [[f32; 4]; 4],
+}
 
     pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
         if new_size.width > 0 && new_size.height > 0 {
@@ -400,6 +519,8 @@ impl Renderer {
         }
     }
 
+    
+
     pub fn set_vsync(&mut self, enabled: bool) {
         let target_mode = if enabled {
             self.default_vsync_mode
@@ -490,7 +611,7 @@ impl Renderer {
                         ),
                         (
                             BlockFace::Bottom,
-                            y == 0 || !chunk.get_block(x, y.saturating_sub(1), z).is_solid(),
+                            y == 0 || !chunk.get_block(x, y.wrapping_sub(1), z).is_solid(),
                         ),
                         (
                             BlockFace::North,
@@ -612,34 +733,42 @@ impl Renderer {
     }
 
     fn face_uvs(face: BlockFace, rect: AtlasUV) -> [[f32; 2]; 4] {
-        let base = [
-            [rect.u_min, rect.v_min],
-            [rect.u_min, rect.v_max],
-            [rect.u_max, rect.v_max],
-            [rect.u_max, rect.v_min],
-        ];
-
         match face {
-            BlockFace::Top => base,
+            BlockFace::Top => [
+                [rect.u_min, rect.v_max],
+                [rect.u_min, rect.v_min],
+                [rect.u_max, rect.v_min],
+                [rect.u_max, rect.v_max],
+            ],
             BlockFace::Bottom => [
+                [rect.u_min, rect.v_min],
+                [rect.u_max, rect.v_min],
+                [rect.u_max, rect.v_max],
+                [rect.u_min, rect.v_max],
+            ],
+            BlockFace::North => [
                 [rect.u_min, rect.v_max],
                 [rect.u_max, rect.v_max],
                 [rect.u_max, rect.v_min],
                 [rect.u_min, rect.v_min],
             ],
-            BlockFace::North => base,
             BlockFace::South => [
-                [rect.u_max, rect.v_min],
                 [rect.u_max, rect.v_max],
-                [rect.u_min, rect.v_max],
+                [rect.u_max, rect.v_min],
                 [rect.u_min, rect.v_min],
+                [rect.u_min, rect.v_max],
             ],
-            BlockFace::East => base,
-            BlockFace::West => [
+            BlockFace::East => [
+                [rect.u_max, rect.v_max],
                 [rect.u_max, rect.v_min],
                 [rect.u_min, rect.v_min],
                 [rect.u_min, rect.v_max],
+            ],
+            BlockFace::West => [
+                [rect.u_min, rect.v_max],
                 [rect.u_max, rect.v_max],
+                [rect.u_max, rect.v_min],
+                [rect.u_min, rect.v_min],
             ],
         }
     }

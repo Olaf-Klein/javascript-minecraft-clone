@@ -69,6 +69,8 @@ pub struct GraphicsSettings {
     pub vsync: bool,
     pub fov: f32,
     pub shadows: bool,
+    pub pbr: bool,
+    pub pbr_exposure: f32,
     pub antialiasing: bool,
     pub texture_quality: TextureQuality,
 }
@@ -81,6 +83,8 @@ impl Default for GraphicsSettings {
             vsync: true,
             fov: 75.0,
             shadows: true,
+            pbr: false,
+            pbr_exposure: 1.0,
             antialiasing: true,
             texture_quality: TextureQuality::Medium,
         };
@@ -98,24 +102,32 @@ impl GraphicsSettings {
                 self.shadows = false;
                 self.antialiasing = false;
                 self.texture_quality = TextureQuality::Low;
+                self.pbr = false;
+                self.pbr_exposure = 1.0;
             }
             QualityPreset::Medium => {
                 self.render_distance = 8;
                 self.shadows = true;
                 self.antialiasing = false;
                 self.texture_quality = TextureQuality::Medium;
+                self.pbr = false;
+                self.pbr_exposure = 1.0;
             }
             QualityPreset::High => {
                 self.render_distance = 12;
                 self.shadows = true;
                 self.antialiasing = true;
                 self.texture_quality = TextureQuality::High;
+                self.pbr = true;
+                self.pbr_exposure = 1.0;
             }
             QualityPreset::Ultra => {
                 self.render_distance = 16;
                 self.shadows = true;
                 self.antialiasing = true;
                 self.texture_quality = TextureQuality::Ultra;
+                self.pbr = true;
+                self.pbr_exposure = 1.2;
             }
             QualityPreset::Custom => {}
         }

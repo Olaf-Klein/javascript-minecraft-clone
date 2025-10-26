@@ -45,6 +45,63 @@ impl Gui {
             state,
             renderer,
         }
+
+    }
+
+    /// Draw inventory/hotbar. `selected` is the hotbar index and `open` toggles the full inventory window.
+        pub fn draw_inventory(
+            &self,
+            ui_ctx: &egui::Context,
+            inventory: &mut crate::inventory::Inventory,
+            selected: &mut usize,
+            open: &mut bool,
+        ) {
+            // Draw hotbar at bottom center
+            egui::TopBottomPanel::bottom("hotbar_panel").show(ui_ctx, |ui| {
+                ui.horizontal_centered(|ui| {
+                    for i in 0..9usize.min(inventory.size) {
+                        let mut label = "Empty".to_string();
+                        if let Some(slot) = &inventory.slots[i] {
+                            label = format!("{} x{}", slot.id, slot.count);
+                        }
+                        let btn = ui.add(egui::Button::new(label).min_size(egui::vec2(48.0, 48.0)));
+                        if btn.clicked() {
+                            *selected = i;
+                        }
+                    }
+                    if ui.button("Inv").clicked() {
+                        *open = !*open;
+                    }
+                });
+            });
+
+            if *open {
+                egui::Window::new("Inventory").show(ui_ctx, |ui| {
+                    ui.label("Inventory");
+                    egui::Grid::new("inv_grid").num_columns(9).show(ui, |ui| {
+                        for r in 0..(inventory.size / 9) {
+                            for c in 0..9 {
+                                let idx = r * 9 + c;
+                                if idx >= inventory.size {
+                                    ui.label("");
+                                    continue;
+                                }
+                                let mut label = "".to_string();
+                                if let Some(slot) = &inventory.slots[idx] {
+                                    label = format!("{} x{}", slot.id, slot.count);
+                                }
+                                if ui.button(label).clicked() {
+                                    // Simple pickup logic: remove stack and put in selected hotbar if empty
+                                    if let Some(stack) = inventory.remove_at(idx, u16::MAX) {
+                                        let _ = inventory.add_item(stack);
+                                    }
+                                }
+                            }
+                            ui.end_row();
+                        }
+                    });
+                });
+            }
     }
 
     /// Draw the main in-window menu. Returns whether the user requested to open settings.
@@ -125,6 +182,18 @@ impl Gui {
                 let shadows_response = ui.checkbox(&mut settings.graphics.shadows, "Shadows");
                 if shadows_response.changed() {
                     settings.graphics.mark_custom();
+                }
+
+                if ui.checkbox(&mut settings.graphics.pbr, "Enable PBR (placeholder)").changed() {
+                    settings.graphics.mark_custom();
+                }
+                if settings.graphics.pbr {
+                    if ui
+                        .add(egui::Slider::new(&mut settings.graphics.pbr_exposure, 0.1..=4.0).text("PBR Exposure"))
+                        .changed()
+                    {
+                        settings.graphics.mark_custom();
+                    }
                 }
 
                 let aa_response = ui.checkbox(&mut settings.graphics.antialiasing, "Antialiasing");

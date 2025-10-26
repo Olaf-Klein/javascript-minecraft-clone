@@ -233,9 +233,12 @@ fn generate_grass_top(tile_size: u32) -> RgbaImage {
 
 fn generate_grass_side(tile_size: u32) -> RgbaImage {
     let mut img = ImageBuffer::new(tile_size, tile_size);
-    let grass_height = (tile_size / 3).max(2);
+    let grass_height = (tile_size / 5).max(2);
+    let blend_band = grass_height.min(3);
     for y in 0..tile_size {
         for x in 0..tile_size {
+            let dirt = generate_noise_color([110, 78, 48], 18, x, y, 32);
+
             if y < grass_height {
                 let noise = jitter(x, y, 31) as i32 - 128;
                 let base = [70i32, 130, 45];
@@ -245,8 +248,22 @@ fn generate_grass_side(tile_size: u32) -> RgbaImage {
                     (base[2] + noise / 10).clamp(30, 180) as u8,
                 ];
                 img.put_pixel(x, y, Rgba([color[0], color[1], color[2], 255]));
+            } else if y < grass_height + blend_band {
+                // Blend a thin strip so the transition isn't harsh when scaled.
+                let t = ((y - grass_height + 1).max(0) as f32) / (blend_band as f32 + 1.0);
+                let noise = jitter(x, y, 31) as i32 - 128;
+                let grass = [
+                    (70 + noise / 10).clamp(40, 180) as u8,
+                    (130 + noise / 8).clamp(60, 220) as u8,
+                    (45 + noise / 10).clamp(30, 180) as u8,
+                ];
+                let blended = [
+                    (grass[0] as f32 * (1.0 - t) + dirt[0] as f32 * t).round() as u8,
+                    (grass[1] as f32 * (1.0 - t) + dirt[1] as f32 * t).round() as u8,
+                    (grass[2] as f32 * (1.0 - t) + dirt[2] as f32 * t).round() as u8,
+                ];
+                img.put_pixel(x, y, Rgba([blended[0], blended[1], blended[2], 255]));
             } else {
-                let dirt = generate_noise_color([110, 78, 48], 18, x, y, 32);
                 img.put_pixel(x, y, Rgba([dirt[0], dirt[1], dirt[2], 255]));
             }
         }
@@ -348,7 +365,7 @@ fn generate_leaves(tile_size: u32) -> RgbaImage {
         for x in 0..tile_size {
             let noise = jitter(x, y, 71) as i32 - 128;
             let base = [50i32, 120, 50];
-            let alpha = 200 + (noise / 8).clamp(-40, 40) as u8;
+            let alpha = (200 + (noise / 8).clamp(-40, 40)) as u8;
             let color = [
                 (base[0] + noise / 15).clamp(10, 140) as u8,
                 (base[1] + noise / 10).clamp(50, 200) as u8,
