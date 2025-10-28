@@ -2,7 +2,6 @@ mod input;
 mod renderer;
 mod inventory;
 mod mods;
-mod server;
 mod settings;
 mod ui;
 mod world;
@@ -78,7 +77,7 @@ const PLAYER_HEADROOM: f32 = 0.2;
 const COLLISION_EPSILON: f32 = 0.001;
 const CROSSHAIR_GAP: f32 = 5.0;
 const CROSSHAIR_ARM: f32 = 12.0;
-const SAVE_MESSAGE_DURATION: Duration = Duration::from_secs(4);
+// const SAVE_MESSAGE_DURATION: Duration = Duration::from_secs(4); // reserved for future save UI
 
 struct App {
     window: Option<Arc<Window>>,
@@ -100,8 +99,7 @@ struct App {
     last_frame: Instant,
     delta_time: Duration,
     mesh_request_tx: mpsc::Sender<ChunkMeshRequest>,
-    last_save_timestamp: Option<Instant>,
-    save_feedback: Option<(Instant, String)>,
+    // Save feedback fields removed (unused). Reintroduce if you implement a save UI.
     texture_resolver: Arc<TextureResolver>,
     pending_atlas_upload: Option<PendingAtlasUpload>,
     active_texture_quality: TextureQuality,
@@ -182,7 +180,7 @@ impl App {
         let mods_dir = std::path::PathBuf::from("mods");
         // Spawn a thread that runs the notify watcher and forwards events into reload_tx
         std::thread::spawn(move || {
-            use notify::{Config, RecommendedWatcher, RecursiveMode, Result as NotifyResult, Watcher, EventKind};
+            use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher, EventKind};
             use std::sync::mpsc::channel as std_channel;
 
             // Channel for notify events
@@ -245,8 +243,7 @@ impl App {
             mod_command_rx: mod_cmd_rx,
             mod_reload_rx: reload_rx,
             game_time: 0.0,
-            last_save_timestamp: None,
-            save_feedback: None,
+            // last_save_timestamp/save_feedback removed; see struct comment above
             texture_resolver: initial_resolver,
             pending_atlas_upload: Some(pending_atlas_upload),
             active_texture_quality,
@@ -1441,7 +1438,7 @@ impl ApplicationHandler for App {
 
                     // Create a render pass to draw egui on top
                     {
-                        let mut rpass =
+                        let rpass =
                             egui_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                                 label: Some("egui pass"),
                                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {

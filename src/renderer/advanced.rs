@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 // Advanced rendering placeholders: PBR, shadow mapping, post-processing.
 // These are scaffolding functions and types to be filled as needed.
 

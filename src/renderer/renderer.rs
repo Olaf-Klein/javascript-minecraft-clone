@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use wgpu::util::DeviceExt;
 use bytemuck::{Pod, Zeroable};
 
+#[allow(dead_code)]
 pub struct Renderer {
     pub surface: wgpu::Surface<'static>,
     pub device: wgpu::Device,
@@ -44,6 +45,13 @@ struct ChunkMesh {
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
     num_indices: u32,
+}
+
+// Light uniform struct used for shadow pass (moved to module scope)
+#[repr(C)]
+#[derive(Copy, Clone, Pod, Zeroable)]
+struct LightUniform {
+    pub view_proj: [[f32; 4]; 4],
 }
 
 impl Renderer {
@@ -386,14 +394,6 @@ impl Renderer {
             shadow_pipeline: Some(shadow_pipeline),
         })
     }
-
-// Light uniform struct used for shadow pass
-#[repr(C)]
-#[derive(Copy, Clone, Pod, Zeroable)]
-struct LightUniform {
-    pub view_proj: [[f32; 4]; 4],
-}
-
     pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
         if new_size.width > 0 && new_size.height > 0 {
             self.size = new_size;

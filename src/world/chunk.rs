@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use super::block::BlockType;
 use noise::{NoiseFn, Perlin};
 use serde::{Deserialize, Serialize};

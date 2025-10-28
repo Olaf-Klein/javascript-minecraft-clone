@@ -1,3 +1,4 @@
+pub mod net;
 pub mod server;
 pub mod inventory;
 pub mod mods;

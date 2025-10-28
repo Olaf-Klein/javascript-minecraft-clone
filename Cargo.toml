@@ -16,6 +16,7 @@ path = "src/bin/dedicated_server.rs"
 name = "launcher"
 path = "src/bin/launcher.rs"
 
+
 [dependencies]
 # Window and Graphics
 winit = "0.30"
@@ -53,6 +54,9 @@ notify = "6"
 eframe = "0.30"
 opener = "0.6"
 rfd = "0.12"
+bytes = "1.4"
+tokio-util = { version = "0.7", features = ["codec"] }
+futures = "0.3"
 
  
 

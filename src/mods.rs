@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use anyhow::{Context, Result};
 use rhai::{Engine, AST, Dynamic, Scope};
 use std::collections::HashMap;

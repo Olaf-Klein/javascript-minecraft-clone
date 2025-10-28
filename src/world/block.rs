@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 /// Block types matching the JavaScript implementation
 /// Covers all vanilla Minecraft blocks for 1.21.10 compatibility
 use serde::{Deserialize, Serialize};

@@ -5,4 +5,4 @@ pub mod advanced;
 
 pub use camera::Camera;
 pub use renderer::Renderer;
-pub use advanced::AdvancedRenderer;
+// `AdvancedRenderer` is used internally by the renderer implementation; don't re-export until needed.

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use crate::settings::{GameSettings, QualityPreset, TextureQuality};
 use egui::{self, FontDefinitions};
 use egui_winit::State;
