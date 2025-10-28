@@ -1,0 +1,31 @@
+{
+  "meta": {
+    "version": "1.0",
+    "name": "Minecraft Clone - Dedicated Server",
+    "description": "A minimal dedicated server for the Rust Minecraft Clone, packaged for Pterodactyl/Wings.",
+    "author": "PizzaBox3",
+    "homepage": "https://github.com/Olaf-Klein/javascript-minecraft-clone"
+  },
+  "docker_images": [
+    {
+      "image": "ghcr.io/Olaf-Klein/minecraft-clone-server:latest",
+      "entrypoint": "./dedicated-server"
+    }
+  ],
+  "startup": "./dedicated-server",
+  "config": {
+    "stop": {
+      "windows": "taskkill /f /im dedicated-server.exe",
+      "linux": "pkill -f dedicated-server || true"
+    }
+  },
+  "variables": [
+    {
+      "name": "PORT",
+      "description": "Port the server should listen on",
+      "env_variable": "PORT",
+      "default": "25565",
+      "user_viewable": true
+    }
+  ]
+}
