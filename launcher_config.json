@@ -1,6 +1,8 @@
 {
-  "game_path": "C:\\Users\\olafk\\Desktop\\Minecraft Clone\\javascript-minecraft-clone-1\\target\\debug\\minecraft-clone.exe",
-  "disabled_mods": [],
+  "game_path": "C:\\Users\\olafk\\Documents\\My Games\\MC Clone\\javascript-minecraft-clone\\target\\debug\\minecraft-clone.exe",
+  "disabled_mods": [
+    "example"
+  ],
   "window_size": null,
   "last_selected": null
 }

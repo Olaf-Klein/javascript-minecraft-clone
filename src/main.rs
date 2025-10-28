@@ -112,6 +112,11 @@ struct App {
     mod_manager: crate::mods::ModManager,
     mod_command_rx: std::sync::mpsc::Receiver<crate::mods::ModCommand>,
     mod_reload_rx: std::sync::mpsc::Receiver<std::path::PathBuf>,
+    // Multiplayer UI state
+    multiplayer_open: bool,
+    mp_server: String,
+    mp_name: String,
+    mp_client: Option<minecraft_clone_rust::net::ClientHandle>,
 }
 
 impl App {
@@ -242,6 +247,10 @@ impl App {
             mod_manager,
             mod_command_rx: mod_cmd_rx,
             mod_reload_rx: reload_rx,
+            multiplayer_open: false,
+            mp_server: "127.0.0.1:25565".to_string(),
+            mp_name: "player".to_string(),
+            mp_client: None,
             game_time: 0.0,
             // last_save_timestamp/save_feedback removed; see struct comment above
             texture_resolver: initial_resolver,
@@ -1159,7 +1168,7 @@ impl ApplicationHandler for App {
                                             self.screen = AppScreen::Worlds;
                                         }
                                         if ui.button("Multiplayer").clicked() {
-                                            // no-op for now
+                                            self.multiplayer_open = true;
                                         }
                                         if ui.button("Options").clicked() {
                                             self.screen_prev = Some(self.screen);
@@ -1308,6 +1317,47 @@ impl ApplicationHandler for App {
                                     }
                                 });
                             }
+                        }
+                        // Multiplayer dialog
+                        if self.multiplayer_open {
+                            // avoid double-borrow of self.multiplayer_open by using a local
+                            let mut mp_open = self.multiplayer_open;
+                            let mut request_close = false;
+                            egui::Window::new("Multiplayer")
+                                .collapsible(false)
+                                .resizable(false)
+                                .open(&mut mp_open)
+                                .show(ctx, |ui| {
+                                    ui.label("Server Address:");
+                                    ui.text_edit_singleline(&mut self.mp_server);
+                                    ui.label("Name:");
+                                    ui.text_edit_singleline(&mut self.mp_name);
+
+                                    ui.horizontal(|ui| {
+                                        if ui.button("Connect").clicked() {
+                                            // Try to start the client and send Connect
+                                            match minecraft_clone_rust::net::start_client(self.mp_server.clone()) {
+                                                Ok(handle) => {
+                                                    let _ = handle.send.send(minecraft_clone_rust::net::protocol::ClientMessage::Connect { name: self.mp_name.clone() });
+                                                    self.mp_client = Some(handle);
+                                                    // Enter playing state and capture mouse
+                                                    self.screen = AppScreen::Playing;
+                                                    self.input.set_mouse_captured(true);
+                                                    App::apply_cursor_capture(window_ref, true);
+                                                    request_close = true;
+                                                }
+                                                Err(e) => eprintln!("Failed to start client: {}", e),
+                                            }
+                                        }
+                                        if ui.button("Cancel").clicked() {
+                                            request_close = true;
+                                        }
+                                    });
+                                });
+                            if request_close {
+                                mp_open = false;
+                            }
+                            self.multiplayer_open = mp_open;
                         }
 
                         // Draw small settings toggle if requested

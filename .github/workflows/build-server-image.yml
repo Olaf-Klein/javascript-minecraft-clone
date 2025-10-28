@@ -1,0 +1,66 @@
+name: Build and publish dedicated-server image
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_PAT }}
+
+      - name: Build and push image (latest + sha)
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: Dockerfile.server
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/minecraft-clone-server:latest
+            ghcr.io/${{ github.repository_owner }}/minecraft-clone-server:${{ github.sha }}
+          platforms: linux/amd64,linux/arm64
+
+      - name: Install netcat on runner for health check
+        run: sudo apt-get update && sudo apt-get install -y netcat-openbsd
+
+      - name: Run container and health-check
+        run: |
+          IMAGE=ghcr.io/${{ github.repository_owner }}/minecraft-clone-server:${{ github.sha }}
+          # run detached, map port
+          docker run -d --rm --name test-server -p 25565:25565 $IMAGE || (echo "Failed to start container" && exit 1)
+          echo "Waiting for server port to be open..."
+          for i in $(seq 1 30); do
+            if nc -z 127.0.0.1 25565; then
+              echo "Server port is open"
+              break
+            fi
+            sleep 1
+          done
+          # if not open after loop, fail
+          if ! nc -z 127.0.0.1 25565; then
+            docker logs test-server || true
+            docker stop test-server || true
+            exit 1
+          fi
+          echo "Health check passed"
+          docker stop test-server || true
