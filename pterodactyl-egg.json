@@ -6,13 +6,13 @@
     "author": "PizzaBox3",
     "homepage": "https://github.com/Olaf-Klein/javascript-minecraft-clone"
   },
-  "docker_images": [
+    "docker_images": [
     {
       "image": "ghcr.io/Olaf-Klein/minecraft-clone-server:latest",
-      "entrypoint": "./dedicated-server"
+      "entrypoint": "/usr/local/bin/dedicated-server"
     }
   ],
-  "startup": "./dedicated-server",
+  "startup": "/usr/local/bin/dedicated-server",
   "config": {
     "stop": {
       "windows": "taskkill /f /im dedicated-server.exe",
